@@ -1,0 +1,6 @@
+nicegui>=3.6,<4
+
+# nicefabric is not published on PyPI yet, so it is not listed here.
+# Install it from a sibling checkout of the NiceFabric repo:
+#     git clone https://github.com/0xarn-io/NiceFabric ../NiceFabric
+#     pip install -e ../NiceFabric
