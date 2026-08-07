@@ -41,6 +41,11 @@ second — not a hand-maintained copy — so what you see is what Python actuall
 Worth trying:
 
 - Add shapes, drag one, and watch `left`/`top` change in the registry panel.
+- **Pick a fill and corner radius for Rect**, then add a couple — the chosen values arrive in
+  the registry as `fill`/`rx`/`ry`. They apply to newly added rectangles only; existing ones are
+  left alone, and the other shapes keep drawing random palette colours. (`rx` and `ry` are
+  Fabric's two separate corner radii — setting only `rx` leaves `ry` at 0 and gives a lopsided
+  corner, so the one slider drives both.)
 - Double-click the text object and type — `text` updates in the registry too.
 - **Import an SVG** with the file picker. It is flattened into a **single** canvas object, so
   the whole drawing drags, scales and rotates as one piece.

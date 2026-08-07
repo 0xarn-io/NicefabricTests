@@ -8,6 +8,8 @@ reports its new geometry back into that same registry. The panel on the right is
 Things worth trying:
 
 * Add a few shapes, then drag one — watch ``left``/``top`` change in the registry panel.
+* Pick a fill and a corner radius for Rect, then add a couple — the chosen values land in the
+  registry as ``fill``/``rx``/``ry``. The other shapes keep drawing random palette colours.
 * Double-click the text object and type — ``text`` updates in the registry too.
 * Import an SVG. It is flattened into a **single** canvas object, so it drags, scales and
   rotates as one piece — see ``insert_svg`` for why flattened rather than grouped.
@@ -114,10 +116,22 @@ def index() -> None:
 
     with ui.row().classes('w-full items-start gap-4 no-wrap'):
         with ui.column().classes('gap-2'):
+            # --- controls for the Rect button; every other shape stays random ---------------
+            # rx/ry are Fabric's two corner radii. Setting only rx leaves ry at 0, which gives
+            # a lopsided corner, so both are driven from the one slider.
+            with ui.row().classes('gap-3 items-center'):
+                ui.label('Rect:').classes('text-sm font-bold w-12')
+                rect_fill = ui.color_input(value='#3b82f6').props('dense').classes('w-36')
+                ui.label('corner radius').classes('text-sm text-gray-600')
+                # a 110x75 rect cannot round further than half its shorter side
+                rect_radius = ui.slider(min=0, max=37, value=6) \
+                    .props('label-always').classes('w-40')
+
             # --- one button per add_* helper, so the whole shape API is reachable ------------
             with ui.row().classes('gap-2 flex-wrap'):
                 ui.button('Rect', on_click=lambda: canvas.add_rect(
-                    width=110, height=75, fill=color(), rx=6, **spot()))
+                    width=110, height=75, fill=rect_fill.value,
+                    rx=rect_radius.value, ry=rect_radius.value, **spot()))
                 ui.button('Circle', on_click=lambda: canvas.add_circle(
                     radius=45, fill=color(), **spot()))
                 ui.button('Ellipse', on_click=lambda: canvas.add_ellipse(
