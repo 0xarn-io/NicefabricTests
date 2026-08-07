@@ -20,7 +20,7 @@ pip install -r requirements.txt
 Each demo owns a port, so several can run side by side.
 
 ```sh
-python demos/01_shapes.py    # -> http://localhost:8081
+python demos/01_shapes.py    # -> http://localhost:9090
 ```
 
 Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
@@ -29,7 +29,7 @@ Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 
 | #  | Demo                                 | Port | What it shows                                            |
 | -- | ------------------------------------ | ---- | -------------------------------------------------------- |
-| 01 | [`01_shapes.py`](demos/01_shapes.py) | 8081 | Every `add_*` shape helper, SVG import, locking, selection, and the live server-side registry |
+| 01 | [`01_shapes.py`](demos/01_shapes.py) | 9090 | Every `add_*` shape helper, SVG import, locking, selection, and the live server-side registry |
 
 ### 01 — shapes, SVG import, locking, and the registry
 

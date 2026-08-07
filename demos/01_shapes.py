@@ -29,7 +29,7 @@ from nicegui import ui
 
 from nicefabric import FabricCanvas
 
-PORT = 8081
+PORT = 9090
 CANVAS_W, CANVAS_H = 800, 450
 
 # Fabric props are camelCase and passed straight through to Fabric.js.
@@ -233,4 +233,4 @@ def index() -> None:
 
 
 if __name__ in {'__main__', '__mp_main__'}:
-    ui.run(port=9090, title='NiceFabric 01 — shapes', show=False, reload=False)
+    ui.run(port=PORT, title='NiceFabric 01 — shapes', show=False, reload=False)
