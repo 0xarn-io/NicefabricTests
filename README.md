@@ -6,7 +6,8 @@ browser, and play with. They are built one at a time, each focused on a single i
 
 ## Setup
 
-`nicefabric` is not on PyPI yet, so install it from a sibling checkout:
+`nicefabric` is not on PyPI yet, so install it from a sibling checkout. Demo 01 uses
+`add_svg`, so the checkout needs to be recent enough to have it:
 
 ```sh
 git clone https://github.com/0xarn-io/NiceFabric ../NiceFabric
@@ -28,9 +29,9 @@ Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 
 | #  | Demo                                 | Port | What it shows                                            |
 | -- | ------------------------------------ | ---- | -------------------------------------------------------- |
-| 01 | [`01_shapes.py`](demos/01_shapes.py) | 8081 | Every `add_*` shape helper, selection, and the live server-side registry |
+| 01 | [`01_shapes.py`](demos/01_shapes.py) | 8081 | Every `add_*` shape helper, SVG import, locking, selection, and the live server-side registry |
 
-### 01 — shapes, selection, and the registry
+### 01 — shapes, SVG import, locking, and the registry
 
 The point is that **Python is authoritative**. A button press adds a shape to a server-side
 registry and the browser renders it; dragging that shape in the browser reports its new geometry
@@ -41,8 +42,28 @@ Worth trying:
 
 - Add shapes, drag one, and watch `left`/`top` change in the registry panel.
 - Double-click the text object and type — `text` updates in the registry too.
+- **Import an SVG** with the file picker. It comes back as a *flat list of ordinary objects*
+  (`Path`, `Rect`, `Circle`, …), each individually selectable and editable — not one opaque
+  image. Drag a single piece out of the imported drawing to see it.
+- **Lock** a selection: the transform handles vanish and dragging stops. The lock flags are
+  ordinary props, so you can watch them appear in the registry panel (🔒 in the object list).
 - Rubber-band select several shapes and press <kbd>Delete</kbd>.
 - Notice `on_added` stays quiet when you press the buttons: it fires only for free-hand strokes.
+
+Two details worth knowing:
+
+- `add_svg` is the one `add_*` that is **async and needs a connected browser** — Fabric's SVG
+  parser runs on the browser's `DOMParser`, so it is a genuine round trip. Calling it from a
+  page-builder body would only run out its timeout; an upload handler is the right place.
+- It imports at **native size** and does not resize the canvas, so the demo scales and centres
+  the result itself (`fit_to_canvas`, using `canvas.last_svg_size`). Fabric bakes `<g>`
+  transforms into each object, so grouping is not preserved — scaling the drawing is just a
+  multiply on every object's centre and scale.
+
+Locking uses Fabric's own `lockMovementX`/`lockRotation`/… flags. They stop the *transform*;
+they are not a permission system — a locked object stays selectable (deliberately, or you could
+never unlock it) and keyboard <kbd>Delete</kbd> still removes it, since that path is handled
+inside the library.
 
 ## Notes
 
