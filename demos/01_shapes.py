@@ -233,4 +233,4 @@ def index() -> None:
 
 
 if __name__ in {'__main__', '__mp_main__'}:
-    ui.run(port=PORT, title='NiceFabric 01 — shapes', show=False, reload=False)
+    ui.run(port=PORT, title='NiceFabric 01 — shapes', show=False, reload=True)
