@@ -116,7 +116,9 @@ def index() -> None:
         width=size['w'], height=size['h'], background='#ffffff', keyboard_delete=True,
         on_selection=on_selection,
         on_modified=on_modified,
-        on_added=lambda e: log.push(f'stroke captured {e.args["id"][:6]}'),
+        # a brush path arrives with a stroke but no strokeUniform, so backfill it too
+        on_added=lambda e: (log.push(f'stroke captured {e.args["id"][:6]}'),
+                            ensure_uniform_strokes()),
         on_text_changed=lambda e: log.push(f'text {e.args["id"][:6]} -> {e.args["text"]!r}'),
         on_error=lambda e: log.push(f'ERROR {e.args}'))
 
@@ -129,6 +131,23 @@ def index() -> None:
             except KeyError:      # deleted while still listed as selected
                 continue
         return pairs
+
+    def ensure_uniform_strokes() -> None:
+        """Backfill ``strokeUniform`` on everything already carrying a stroke.
+
+        The shape tools set it at creation, but objects arriving by other routes do not have
+        it: a canvas saved before this demo set it, a free-hand path built by the brush, an
+        SVG-parsed shape. Without it a non-uniform scale multiplies the stroke by ``scaleX``
+        on the vertical edges and ``scaleY`` on the horizontal ones — a tall thin rect ends up
+        with hairline sides and heavy top and bottom, which reads as a stretched bitmap.
+        """
+        fixed = 0
+        for entry in canvas.to_dict()['objects']:
+            if entry.get('strokeWidth') and not entry.get('strokeUniform'):
+                put(entry['id'], strokeUniform=True)
+                fixed += 1
+        if fixed:
+            log.push(f'backfilled strokeUniform on {fixed} object(s)')
 
     def refresh_json() -> None:
         json_code.content = json.dumps([elide(p) for _, p in selected()], indent=1)
@@ -251,6 +270,7 @@ def index() -> None:
             # save is uncapped, load is not (1 MB / 1000 objects) — demo 01 explains
             ui.notify(f'load failed: {err}', type='negative')
             return
+        ensure_uniform_strokes()   # a canvas saved before this demo set it comes back without
         refresh_selection()
         ui.notify('loaded')
 
@@ -268,6 +288,7 @@ def index() -> None:
             ui.notify(f'{e.file.name}: {err}', type='negative')
             return
         json_dialog.close()
+        ensure_uniform_strokes()   # the file may predate strokeUniform, or come from elsewhere
         refresh_selection()
         ui.notify(f'imported {e.file.name}')
 
@@ -391,8 +412,13 @@ def index() -> None:
                     ui.color_input('fill', value=props.get('fill') or '',
                                    on_change=lambda e: put(obj.id, fill=e.value)) \
                         .props('dense').classes('nf-fill grow')
+                    # a stroke colour on a shape with no width is invisible, so give it one;
+                    # strokeUniform rides along so the new stroke survives scaling
                     ui.color_input('stroke', value=props.get('stroke') or '',
-                                   on_change=lambda e: put(obj.id, stroke=e.value)) \
+                                   on_change=lambda e, p=props: put(
+                                       obj.id, stroke=e.value,
+                                       strokeWidth=p.get('strokeWidth') or 2,
+                                       strokeUniform=True)) \
                         .props('dense').classes('nf-stroke grow')
                 ui.label('stroke width').classes('text-xs text-gray-600')
                 # strokeUniform rides along so a stroke added here stays put under scaling

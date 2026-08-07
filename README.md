@@ -120,11 +120,13 @@ Machinery worth reading in the source:
   `FabricObject.props`, so the registry stays the single source of truth and there is no
   update-echo loop to guard. Panel edits refresh only the JSON view — rebuilding widgets on
   every keystroke would destroy the slider mid-drag.
-- **Strokes use `strokeUniform`.** Scaling a Fabric object multiplies `scaleX`/`scaleY` and the
-  stroke scales with it, so a resized stroked rect is mathematically identical to a stretched
-  bitmap of the original — which is exactly what it looks like. `strokeUniform: true` (set by
-  the shape tools and by the panel's stroke-width slider) keeps the stroke at its set width
-  while the geometry scales.
+- **Strokes use `strokeUniform`, and it is backfilled.** Scaling a Fabric object multiplies
+  `scaleX`/`scaleY` and the stroke scales with it — measured on a 6px stroke scaled 0.5 × 3,
+  the sides render at 2px and the top and bottom at 18px, which reads exactly like a stretched
+  bitmap. `strokeUniform: true` holds the stroke at 6px on every edge. The shape tools set it
+  at creation, but objects arriving by other routes (a canvas saved before this demo set it, a
+  brush path, an SVG-parsed shape) do not carry it, so `ensure_uniform_strokes()` backfills it
+  after load, after JSON import, and after each free-hand stroke.
 
 ## Notes
 
