@@ -30,6 +30,7 @@ Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 | #  | Demo                                 | Port | What it shows                                            |
 | -- | ------------------------------------ | ---- | -------------------------------------------------------- |
 | 01 | [`01_shapes.py`](demos/01_shapes.py) | 9090 | Every `add_*` shape helper, SVG import, locking, selection, and the live server-side registry |
+| 02 | [`02_editor.py`](demos/02_editor.py) | 9091 | The same library shaped like a tool: a full-page 2D editor with drawer-based tools, a properties panel, and the whole file suite |
 
 ### 01 — shapes, SVG import, locking, and the registry
 
@@ -86,6 +87,36 @@ Locking uses Fabric's own `lockMovementX`/`lockRotation`/… flags. They stop th
 they are not a permission system — a locked object stays selectable (deliberately, or you could
 never unlock it) and keyboard <kbd>Delete</kbd> still removes it, since that path is handled
 inside the library.
+
+### 02 — a full-page 2D editor
+
+Demo 01 is a lab bench; this is the same library shaped like a tool. The canvas fills the page
+and follows the window; everything else lives in NiceGUI layout chrome:
+
+- **Left drawer — creation.** Select/Draw tool toggle (Draw is the free-hand pencil, with brush
+  colour and width), a button per shape, the style new shapes are born with (fill, stroke,
+  stroke width), SVG insert (flattened, per demo 01's measured trade-off), and image-by-URL
+  (validated against the same `https://`/`http://`/`data:image/` allow-list `load_json` uses —
+  `add_image` itself passes `src` through unchecked).
+- **Right drawer — inspection.** Canvas settings (background, zoom, reset view) and a
+  properties panel for the selection: x/y, angle, opacity, fill, stroke, stroke width, font
+  size for text, plus lock, duplicate, z-order, delete. A `Selection JSON` expansion shows the
+  registry entries behind the selection, and an event log runs below it.
+- **Header `File` menu.** Save/load (server-side storage), SVG and PNG export (as downloads —
+  exported SVG embeds user-controlled URLs and must not be re-inlined into a page), clear.
+
+Machinery worth reading in the source:
+
+- **Full-page sizing.** The canvas draws at a fixed pixel size — CSS stretching would desync
+  hit-testing — so the page measures its content area and calls `canvas.resize()`: on connect,
+  on debounced window resizes, and after drawer toggles.
+- **Placement follows the view.** New shapes land at Fabric's `getVpCenter()` — the centre of
+  what you *see*, which matters once you zoom or pan — with the surface centre as fallback
+  before init.
+- **The properties panel is rebuilt, not synced.** Selection changes and drags rebuild it from
+  `FabricObject.props`, so the registry stays the single source of truth and there is no
+  update-echo loop to guard. Panel edits refresh only the JSON view — rebuilding widgets on
+  every keystroke would destroy the slider mid-drag.
 
 ## Notes
 
