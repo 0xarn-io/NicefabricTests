@@ -9,8 +9,8 @@ Things worth trying:
 
 * Add a few shapes, then drag one — watch ``left``/``top`` change in the registry panel.
 * Double-click the text object and type — ``text`` updates in the registry too.
-* Import an SVG. It arrives as a *flat list of ordinary objects* (``Path``, ``Rect``, …), each
-  one selectable and editable on its own — not a single opaque image. Drag one piece out of it.
+* Import an SVG. It is flattened into a **single** canvas object, so it drags, scales and
+  rotates as one piece — see ``insert_svg`` for why flattened rather than grouped.
 * Select something and hit Lock: the transform handles disappear and dragging stops. The lock
   flags are ordinary props, so you can watch them land in the registry panel.
 * Rubber-band select several shapes, then hit Delete (keyboard_delete is on).
@@ -21,9 +21,10 @@ Run with::
 
     python demos/01_shapes.py
 """
-import asyncio
+import base64
 import json
 import random
+import re
 
 from nicegui import ui
 
@@ -41,30 +42,45 @@ PALETTE = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
 # delete is handled inside the library, Delete still removes a locked object.
 LOCK_PROPS = ('lockMovementX', 'lockMovementY', 'lockRotation', 'lockScalingX', 'lockScalingY')
 
-SVG_MAX_BYTES = 1_000_000   # the same cap add_svg puts on its own source
+# The SVG is base64-encoded into the registry, and load_json refuses a snapshot over 1 MB.
+# base64 costs about 4/3, so this leaves room for the encoded image plus everything else.
+SVG_MAX_BYTES = 500_000
 
 
-def fit_to_canvas(objects: list, size: tuple[float, float] | None) -> None:
-    """Scale and centre freshly imported shapes — ``add_svg`` imports at *native* size.
+def svg_with_explicit_size(svg: str) -> tuple[str, float, float]:
+    """Return the SVG guaranteed to carry width/height, plus that size.
 
-    Fabric has already baked each element's accumulated parent transforms into absolute
-    ``left``/``top``/``scaleX``/``scaleY`` values and thrown the ``<g>`` structure away, so
-    scaling the whole drawing about the document origin is just a multiply on every object's
-    centre and scale, then one shared offset to centre it.
+    An ``<svg>`` carrying only a ``viewBox`` has no intrinsic size, and a browser rendering it
+    inside an ``<img>`` — which is what a Fabric ``Image`` ultimately is — falls back to
+    300x150 and distorts it. Injecting the viewBox's own dimensions makes the result
+    predictable and gives us a real size to scale against.
+
+    :raises ValueError: if there is no ``<svg>`` element, or no usable size anywhere in it.
     """
-    if not size:
-        return
-    doc_w, doc_h = size
-    if not (doc_w and doc_h):
-        return
-    k = min(CANVAS_W / doc_w, CANVAS_H / doc_h, 1.0)
-    off_x, off_y = (CANVAS_W - doc_w * k) / 2, (CANVAS_H - doc_h * k) / 2
-    for obj in objects:
-        props = obj.props
-        obj.update(left=off_x + props.get('left', 0) * k,
-                   top=off_y + props.get('top', 0) * k,
-                   scaleX=props.get('scaleX', 1) * k,
-                   scaleY=props.get('scaleY', 1) * k)
+    root = re.search(r'<svg\b[^>]*>', svg, re.IGNORECASE)
+    if root is None:
+        raise ValueError('no <svg> element found')
+    tag = root.group(0)
+
+    def attr(name: str) -> float | None:
+        """Read a bare-number or px-suffixed attribute; '100%' and friends give None."""
+        match = re.search(rf'\b{name}\s*=\s*["\']\s*([\d.]+)\s*(?:px)?\s*["\']', tag, re.IGNORECASE)
+        return float(match.group(1)) if match else None
+
+    width, height = attr('width'), attr('height')
+    if width and height:
+        return svg, width, height
+
+    box = re.search(r'\bviewBox\s*=\s*["\']([^"\']+)["\']', tag, re.IGNORECASE)
+    if box is None:
+        raise ValueError('no usable width/height and no viewBox to fall back on')
+    parts = box.group(1).replace(',', ' ').split()
+    if len(parts) != 4:
+        raise ValueError(f'malformed viewBox: {box.group(1)!r}')
+    width, height = float(parts[2]), float(parts[3])
+    if not (width and height):
+        raise ValueError(f'degenerate viewBox: {box.group(1)!r}')
+    return svg.replace(tag, f'{tag[:-1]} width="{width}" height="{height}">', 1), width, height
 
 
 def abbreviated(state: dict) -> dict:
@@ -151,31 +167,36 @@ def index() -> None:
                 log.push(f'{"locked" if lock else "unlocked"} {len(selected)} object(s)')
 
             async def insert_svg(e) -> None:
-                """Import an uploaded SVG through Fabric's parser, in the browser.
+                """Insert an uploaded SVG as ONE flattened ``Image`` object.
 
-                ``add_svg`` is a real round trip — Fabric's parser needs the browser's
-                ``DOMParser`` — so it is async and needs a connected client. An upload handler
-                is exactly the right place; a page-builder body would just time out.
+                Flattened rather than grouped, because grouping does not survive a save/load
+                cycle. The library's ``add_svg`` runs Fabric's parser in the browser and hands
+                back a *flat list* of separate objects; re-grouping those with
+                ``add_object('Group', ...)`` really does register a single object and renders
+                correctly — but ``Group`` is not in ``load_json``'s allow-list, so the whole
+                group is silently dropped the first time a saved canvas is reloaded.
+
+                An ``Image`` whose ``src`` is a ``data:image/svg+xml`` URL is a single object
+                that *does* round-trip: both ``Image`` and the ``data:image/`` scheme are
+                accepted by that same gate. The trade is that the drawing arrives flattened —
+                it moves, scales and rotates as one piece and is no longer editable
+                shape-by-shape.
                 """
                 source = (await e.file.read()).decode('utf-8', errors='replace')
                 uploader.reset()  # drop the finished file so the picker is ready for the next
                 try:
-                    objects = await canvas.add_svg(source)
-                except (ValueError, RuntimeError, asyncio.TimeoutError) as err:
+                    svg, width, height = svg_with_explicit_size(source)
+                except ValueError as err:
                     ui.notify(f'{e.file.name}: {err}', type='negative')
-                    log.push(f'SVG import failed: {err}')
+                    log.push(f'SVG rejected: {err}')
                     return
-                if not objects:
-                    # Fabric cannot tell a rejected document from a genuinely empty one:
-                    # both parse to zero objects, so both land here
-                    ui.notify(f'{e.file.name}: no shapes found (empty or not valid SVG)',
-                              type='warning')
-                    log.push(f'SVG import: {e.file.name} produced no objects')
-                    return
-                size = canvas.last_svg_size
-                fit_to_canvas(objects, size)
-                shown = f'{size[0]:.0f}x{size[1]:.0f}' if size else 'unknown size'
-                log.push(f'imported {e.file.name}: {len(objects)} object(s), document {shown}')
+                scale = min(CANVAS_W / width, CANVAS_H / height, 1.0)
+                data_url = ('data:image/svg+xml;base64,'
+                            + base64.b64encode(svg.encode()).decode())
+                canvas.add_image(data_url, left=CANVAS_W / 2, top=CANVAS_H / 2,
+                                 scaleX=scale, scaleY=scale)
+                log.push(f'inserted {e.file.name} as one Image '
+                         f'({width:.0f}x{height:.0f} @ {scale:.2f})')
 
             with ui.row().classes('gap-2 items-center'):
                 ui.button('Lock / Unlock', on_click=toggle_lock).props('outline')

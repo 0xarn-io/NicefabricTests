@@ -42,23 +42,40 @@ Worth trying:
 
 - Add shapes, drag one, and watch `left`/`top` change in the registry panel.
 - Double-click the text object and type — `text` updates in the registry too.
-- **Import an SVG** with the file picker. It comes back as a *flat list of ordinary objects*
-  (`Path`, `Rect`, `Circle`, …), each individually selectable and editable — not one opaque
-  image. Drag a single piece out of the imported drawing to see it.
+- **Import an SVG** with the file picker. It is flattened into a **single** canvas object, so
+  the whole drawing drags, scales and rotates as one piece.
 - **Lock** a selection: the transform handles vanish and dragging stops. The lock flags are
   ordinary props, so you can watch them appear in the registry panel (🔒 in the object list).
 - Rubber-band select several shapes and press <kbd>Delete</kbd>.
 - Notice `on_added` stays quiet when you press the buttons: it fires only for free-hand strokes.
 
-Two details worth knowing:
+#### Why the SVG is flattened rather than grouped
 
-- `add_svg` is the one `add_*` that is **async and needs a connected browser** — Fabric's SVG
-  parser runs on the browser's `DOMParser`, so it is a genuine round trip. Calling it from a
-  page-builder body would only run out its timeout; an upload handler is the right place.
-- It imports at **native size** and does not resize the canvas, so the demo scales and centres
-  the result itself (`fit_to_canvas`, using `canvas.last_svg_size`). Fabric bakes `<g>`
-  transforms into each object, so grouping is not preserved — scaling the drawing is just a
-  multiply on every object's centre and scale.
+The demo inserts the SVG as one `Image` whose `src` is a `data:image/svg+xml;base64,…` URL,
+instead of using the library's `add_svg`. That is a deliberate trade, and the reason is
+`load_json`:
+
+| Representation                                 | Registry after import | After `to_dict()` → `load_json()` |
+| ---------------------------------------------- | --------------------- | ---------------------------------- |
+| `add_svg(...)`                                 | 4 separate objects    | 4 separate objects                 |
+| `add_object('Group', objects=[...])`           | 1 `Group`             | **0 — silently dropped**           |
+| `add_image('data:image/svg+xml;base64,…')`     | 1 `Image`             | 1 `Image`                          |
+
+`load_json` validates against an allow-list (`Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`,
+`Polyline`, `Path`, `Textbox`, `IText`, `Text`, `Image`). `Group` is not on it, so a grouped
+import renders correctly and lives in the registry, but vanishes the first time a saved canvas
+is reloaded. `Image` *is* on it, and `data:image/` is an accepted `src` scheme, so the
+flattened form survives the round trip. The cost is that the drawing arrives flattened — it is
+no longer editable shape-by-shape.
+
+If you want the individual shapes instead, `await canvas.add_svg(source)` gives them to you.
+Note it is the one `add_*` that is **async and needs a connected browser** (Fabric's parser
+runs on the browser's `DOMParser`), and it imports at native size without resizing the canvas —
+`canvas.last_svg_size` is what you scale against.
+
+An SVG with only a `viewBox` and no `width`/`height` has no intrinsic size, and a browser
+renders it at a 300×150 fallback inside an `<img>`. The demo injects the viewBox's dimensions
+before encoding so the result is predictable.
 
 Locking uses Fabric's own `lockMovementX`/`lockRotation`/… flags. They stop the *transform*;
 they are not a permission system — a locked object stays selectable (deliberately, or you could
