@@ -31,6 +31,7 @@ Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 | -- | ------------------------------------ | ---- | -------------------------------------------------------- |
 | 01 | [`01_shapes.py`](demos/01_shapes.py) | 9090 | Every `add_*` shape helper, SVG import, locking, selection, and the live server-side registry |
 | 02 | [`02_editor.py`](demos/02_editor.py) | 9091 | The same library shaped like a tool: a full-page 2D editor with drawer-based tools, a properties panel, and the whole file suite |
+| 03 | [`03_agv_tracks.py`](demos/03_agv_tracks.py) | 9092 | A domain editor: drag AGV track pieces from a palette onto a snapping grid, and get told which ends are still open |
 
 ### 01 — shapes, SVG import, locking, and the registry
 
@@ -127,6 +128,40 @@ Machinery worth reading in the source:
   at creation, but objects arriving by other routes (a canvas saved before this demo set it, a
   brush path, an SVG-parsed shape) do not carry it, so `ensure_uniform_strokes()` backfills it
   after load, after JSON import, and after each free-hand stroke.
+
+### 03 — AGV track editor
+
+A *domain* editor rather than a general one. The canvas is a grid of 80 px cells and every
+object on it is one track piece: straight, 90° curve, fork, crossing, charging / load / unload
+station, end stop. Drag a piece out of the palette and it lands on the cell you dropped it on;
+drag a placed piece and it snaps back to the grid; press <kbd>R</kbd> to rotate the selection.
+The right drawer runs a connectivity pass and lists the ends that are still open, so a finished
+loop reports *every end is connected*.
+
+Four decisions carry the design:
+
+- **One object per piece.** Each piece is a small generated SVG rendered into a single Fabric
+  `Image` through a `data:image/svg+xml` URL — the flattened form demo 01 measured as the only
+  single-object representation that survives `to_dict()` → `load_json()`.
+- **The kind rides on the object.** `add_image(url, kind='curve')` stores a custom prop, and
+  `load_json` deep-copies unknown props, so `kind` comes back after a save/load. This is not a
+  stylistic choice: **`load_json` re-ids every object**, so a side table keyed by object id
+  would be wiped by the first load. Metadata has to travel *on* the piece.
+- **Ports are derived, never stored.** `kind` gives the base ports and Fabric's own `angle`
+  gives the rotation; connectivity rotates one by the other. Rotating clockwise moves
+  N→E→S→W, which is a single index shift along `'NESW'`, so no per-piece rotation table
+  exists to fall out of date. There is one copy of each fact, so nothing can drift.
+- **Snapping is server-side.** A drop reports the pointer position and `on_modified` reports
+  the position after a drag; both are rounded to the cell grid and to 90° and written back
+  with `update_object`. The browser never decides where a piece actually is.
+
+Drag and drop is real HTML5 DnD: the palette tiles are drag sources, and a `drop` listener on
+the canvas wrapper hands the pointer position back through NiceGUI's `emitEvent`. The grid
+itself is a CSS background on the canvas element, showing through because the Fabric
+background is left transparent.
+
+Station arrows point *along* the track stub rather than up the page — the whole tile rotates
+with the piece, so an arrow drawn across the stub would point somewhere arbitrary once placed.
 
 ## Notes
 
