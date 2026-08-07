@@ -214,6 +214,13 @@ exports to CSV. Symbols get ISA tags automatically (`HV-101`, `FCV-101`, `TIC-10
   lands on exactly that.
 - **Tags are positional** — sorted and numbered per prefix — so a drawing keeps its tag numbers
   even though `load_json` regenerates every underlying object id on load.
+- **A drawing tool has to switch off the objects.** While Pipe or Signal is active, every
+  object gets `selectable=False, evented=False` and the cursor becomes a crosshair. Without
+  that, a click landing on a symbol selects it and a press-drag *moves* it instead of setting
+  a run's corner — which reads as the tool selector doing nothing at all.
+
+The two header tabs switch views: **Diagram** keeps the BOM as a strip under the sheet,
+**Bill of materials** hides the sheet and hands the table the whole page.
 
 Measured end to end: a 400 px run bills as 5.00 m at 38.00/m = 190.00, a 160 px signal run as
 2.00 m at 6.40/m = 12.80, and the exported CSV carries the same numbers as the on-screen table.

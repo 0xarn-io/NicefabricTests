@@ -196,7 +196,16 @@ def run_length(points: list[dict]) -> float:
 
 @ui.page('/')  # per-visit page: a module-level canvas would be shared by ALL tabs and users
 def index() -> None:
-    state = {'tool': 'select', 'pending': None, 'labels': '', 'zoom': 1.0}
+    state = {'tool': 'select', 'pending': None, 'labels': '', 'zoom': 1.0, 'view': 'diagram'}
+
+    def live_props() -> dict:
+        """Objects only react to the pointer while the Select tool is active.
+
+        Without this a click that lands on a symbol selects it — and a press-drag *moves* it —
+        instead of setting a run's corner, which reads as the tool selector doing nothing.
+        """
+        live = state['tool'] == 'select'
+        return {'selectable': live, 'evented': live}
 
     def on_mouse_down(e) -> None:
         """Pipe and signal runs are drawn here — the event carries scene coordinates."""
@@ -227,7 +236,8 @@ def index() -> None:
                  if kind == 'pipe' else
                  {'stroke': SIGNAL, 'strokeWidth': 1.4, 'strokeDashArray': [7, 5]})
         canvas.add_polyline(rel, left=(min(xs) + max(xs)) / 2, top=(min(ys) + max(ys)) / 2,
-                            fill='', kind=kind, strokeUniform=True, **PLACED, **style)
+                            fill='', kind=kind, strokeUniform=True,
+                            **PLACED, **live_props(), **style)
         log.push(f'{kind:<6} {run_length(rel):.2f} m')
 
     canvas = FabricCanvas(width=1200, height=620, background='', keyboard_delete=True,
@@ -318,7 +328,8 @@ def index() -> None:
         z = state['zoom']
         left = round(e.args['x'] / z / SNAP) * SNAP
         top = round(e.args['y'] / z / SNAP) * SNAP
-        canvas.add_image(CATALOG[kind]['url'], left=left, top=top, kind=kind, **PLACED)
+        canvas.add_image(CATALOG[kind]['url'], left=left, top=top, kind=kind,
+                         **PLACED, **live_props())
         log.push(f'{CATALOG[kind]["sku"]}  {left / PX_PER_M:.2f}, {top / PX_PER_M:.2f}')
         refresh()
 
@@ -429,11 +440,39 @@ def index() -> None:
         canvas.remove_selected()
         refresh()
 
+    def set_view(name: str) -> None:
+        """Diagram view keeps the BOM as a strip; the BOM view hands it the whole page."""
+        state['view'] = name
+        diagram = name == 'diagram'
+        stage.set_visibility(diagram)
+        bom_panel.style(replace='height:252px' if diagram else '')
+        bom_panel.classes(replace='w-full bg-white border-t border-slate-200 px-3 py-1 '
+                                  'nf-bompanel' + ('' if diagram else ' flex-1 min-h-0'))
+        bom_table.style(replace='height:206px' if diagram
+                        else 'height:calc(100% - 34px)')
+        for view, label in tabs.items():
+            label.classes(replace='text-[12px] px-3 py-3 cursor-pointer ' + (
+                'text-white border-b-2 border-cyan-400' if view == name
+                else 'text-slate-400 hover:text-slate-200'))
+
     def set_tool(tool: str) -> None:
         state['tool'] = tool
         state['pending'] = None
+        canvas.discard_selection()
+        live = live_props()
+        for entry in canvas.to_dict()['objects']:
+            if entry.get('kind') == 'label':
+                continue                      # captions are already inert
+            try:
+                canvas.update_object(entry['id'], **live)
+            except KeyError:
+                pass
+        # a crosshair is the other half of the feedback: the pointer says "drawing", not "pick"
+        canvas.run_canvas_method('set', {'defaultCursor': 'default' if tool == 'select'
+                                         else 'crosshair'})
         status_hint.text = ('drag a symbol onto the sheet' if tool == 'select'
                             else f'click the start of a {tool} run')
+        refresh()
 
     # ------------------------------------------------------------------ panels -----------
     def prop_row(name: str, value: str, unit: str = '') -> None:
@@ -514,10 +553,12 @@ def index() -> None:
     with ui.header().classes('items-center gap-0 px-4 py-0').style('background:#1b2431'):
         ui.label('P&ID').classes('text-sm font-semibold text-white tracking-wide mr-1')
         ui.label('studio').classes('text-[11px] font-light text-slate-400 mr-6')
-        for tab in ('Diagram', 'Bill of materials', 'Datasheets', 'Revisions'):
-            ui.label(tab).classes('text-[12px] px-3 py-3 cursor-pointer ' + (
-                'text-white border-b-2 border-cyan-400' if tab == 'Diagram'
-                else 'text-slate-400 hover:text-slate-200'))
+        # only tabs that actually switch something — a label styled to look clickable but
+        # wired to nothing is worse than no tab at all
+        tabs: dict[str, ui.label] = {}
+        for view, caption in (('diagram', 'Diagram'), ('bom', 'Bill of materials')):
+            tabs[view] = ui.label(caption).classes('text-[12px] px-3 py-3 cursor-pointer')
+            tabs[view].on('click', lambda _, v=view: set_view(v))
         ui.space()
         ui.button('EXPORT BOM', icon='download', on_click=export_bom) \
             .props('dense unelevated no-caps size=sm').style('background:#16a34a;color:#fff') \
@@ -536,7 +577,7 @@ def index() -> None:
                 ui.menu_item('Clear sheet', clear_all)
 
     # drawing sheet on top, bill of materials underneath — the usual drafting split
-    with ui.element('div').classes('relative w-full flex-1 min-h-0 nf-stage') as stage:
+    with ui.element('div').classes('relative w-full flex-1 min-h-0 nf-stage') as stage:  # noqa
         # the canvas is built above (the handlers below close over it), so it has to be moved
         # into the stage rather than merely styled — `absolute inset-0` needs this ancestor
         canvas.move(stage)
@@ -580,8 +621,8 @@ def index() -> None:
             ui.icon('my_location', size='12px').classes('text-slate-400')
             ui.label('—').classes('text-[11px] font-mono text-slate-700 nf-cursor')
 
-    with ui.element('div').classes('w-full bg-white border-t border-slate-200 px-3 py-1') \
-            .style('height:252px'):
+    with ui.element('div').classes('w-full bg-white border-t border-slate-200 px-3 py-1 nf-bompanel') \
+            .style('height:252px') as bom_panel:
         with ui.row().classes('w-full items-baseline gap-3'):
             ui.label('BILL OF MATERIALS').classes('nf-panelhead')
             ui.space()
@@ -609,6 +650,7 @@ def index() -> None:
         status_hint = ui.label('drag a symbol onto the sheet') \
             .classes('text-[11px] text-slate-400 nf-hint')
 
+    set_view('diagram')
     refresh()
 
 
