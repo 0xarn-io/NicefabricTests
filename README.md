@@ -31,7 +31,7 @@ Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 | -- | ------------------------------------ | ---- | -------------------------------------------------------- |
 | 01 | [`01_shapes.py`](demos/01_shapes.py) | 9090 | Every `add_*` shape helper, SVG import, locking, selection, and the live server-side registry |
 | 02 | [`02_editor.py`](demos/02_editor.py) | 9091 | The same library shaped like a tool: a full-page 2D editor with drawer-based tools, a properties panel, and the whole file suite |
-| 03 | [`03_agv_tracks.py`](demos/03_agv_tracks.py) | 9092 | A domain editor: drag AGV track pieces from a palette onto a snapping grid, and get told which ends are still open |
+| 03 | [`03_agv_tracks.py`](demos/03_agv_tracks.py) | 9092 | A domain editor: drag AGV path elements from a palette onto a metric snapping grid, and get told which ports are still open |
 
 ### 01 — shapes, SVG import, locking, and the registry
 
@@ -129,14 +129,20 @@ Machinery worth reading in the source:
   brush path, an SVG-parsed shape) do not carry it, so `ensure_uniform_strokes()` backfills it
   after load, after JSON import, and after each free-hand stroke.
 
-### 03 — AGV track editor
+### 03 — AGV layout editor
 
-A *domain* editor rather than a general one. The canvas is a grid of 80 px cells and every
-object on it is one track piece: straight, 90° curve, fork, crossing, charging / load / unload
-station, end stop. Drag a piece out of the palette and it lands on the cell you dropped it on;
-drag a placed piece and it snaps back to the grid; press <kbd>R</kbd> to rotate the selection.
-The right drawer runs a connectivity pass and lists the ends that are still open, so a finished
-loop reports *every end is connected*.
+A *domain* editor rather than a general one, drawn the way commissioning software draws a
+layout: a dark CAD field with a metric grid (minor line per cell, major every five), path
+centrelines inside a translucent vehicle envelope, node markers where segments meet, and
+compact geometric station symbols. One grid cell is 1.0 m, so the docks report in metres —
+element count, connections, stations, total track length — and the status bar carries a live
+cursor coordinate readout.
+
+Every object on the canvas is one path element: straight, 90° curve, fork, crossing, charger,
+load / unload station, end stop. Drag one out of the palette and it lands on the cell you
+dropped it on; drag a placed element and it snaps back to the grid; press <kbd>R</kbd> to
+rotate the selection. The connectivity pass lists every port still open, so a finished loop
+reports *network closed — all ports connected*.
 
 Four decisions carry the design:
 
@@ -155,13 +161,18 @@ Four decisions carry the design:
   the position after a drag; both are rounded to the cell grid and to 90° and written back
   with `update_object`. The browser never decides where a piece actually is.
 
-Drag and drop is real HTML5 DnD: the palette tiles are drag sources, and a `drop` listener on
-the canvas wrapper hands the pointer position back through NiceGUI's `emitEvent`. The grid
-itself is a CSS background on the canvas element, showing through because the Fabric
-background is left transparent.
+- **Elements cannot be scaled.** `lockScalingX`/`lockScalingY` are set on every placed
+  element. Path geometry is fixed: a stretched curve would no longer meet its neighbours.
 
-Station arrows point *along* the track stub rather than up the page — the whole tile rotates
-with the piece, so an arrow drawn across the stub would point somewhere arbitrary once placed.
+Drag and drop is real HTML5 DnD: the palette rows are drag sources, and a `drop` listener on
+the canvas wrapper hands the pointer position back through NiceGUI's `emitEvent`. The cursor
+coordinate readout is updated straight from JS — a coordinate display does not need a server
+round trip. The grid is a CSS background on the canvas element, showing through because the
+Fabric background is left transparent.
+
+Station symbols are read *relative to the stub* rather than drawn upright — the whole tile
+rotates with the element, so a glyph drawn across the stub would point somewhere arbitrary
+once placed.
 
 ## Notes
 
