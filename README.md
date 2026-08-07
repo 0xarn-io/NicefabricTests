@@ -32,6 +32,7 @@ Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 | 01 | [`01_shapes.py`](demos/01_shapes.py) | 9090 | Every `add_*` shape helper, SVG import, locking, selection, and the live server-side registry |
 | 02 | [`02_editor.py`](demos/02_editor.py) | 9091 | The same library shaped like a tool: a full-page 2D editor with drawer-based tools, a properties panel, and the whole file suite |
 | 03 | [`03_agv_tracks.py`](demos/03_agv_tracks.py) | 9092 | A domain editor in the idiom of fleet-commissioning software: laser-scan underlay, drag-and-drop route elements on a metric snapping grid, node/properties/telemetry docks |
+| 04 | [`04_pid_bom.py`](demos/04_pid_bom.py) | 9093 | A P&ID editor whose bill of materials builds itself: SKU-tagged ISA symbols, click-to-draw pipe runs billed by length, CSV export |
 
 ### 01 — shapes, SVG import, locking, and the registry
 
@@ -190,6 +191,32 @@ Two things that bite when styling this element:
 Station symbols are read *relative to the stub* rather than drawn upright — the whole tile
 rotates with the element, so a glyph drawn across the stub would point somewhere arbitrary
 once placed.
+
+### 04 — P&ID editor with a live bill of materials
+
+A drafting tool that costs itself. Drag ISA symbols out of a catalogue, draw pipe runs by
+clicking two points, and the BOM underneath aggregates by part number: equipment and valves by
+count, **pipe and signal cable by drawn length**, each with an extended price and a total that
+exports to CSV. Symbols get ISA tags automatically (`HV-101`, `FCV-101`, `TIC-101`, …).
+
+- **The catalogue is the source of truth.** `CATALOG` holds one entry per symbol — artwork,
+  ISA tag prefix, SKU, description, unit price. A placed symbol stores only its `kind`;
+  everything else is looked up, so a price change is a one-line edit that cannot desync from
+  what is on the drawing.
+- **Line items are counted, never stored.** Quantities come from walking the registry on every
+  refresh, so deleting a valve drops it out of the BOM immediately and nothing can drift.
+- **Pipe is drawn with `on_mouse_down`.** In pipe mode the first press records a corner and the
+  second draws an orthogonal `Polyline`. The event reports **scene** coordinates, so no
+  screen-to-canvas conversion is needed — though the pointer is still divided back through the
+  zoom before snapping.
+- **A `Polyline`'s `left`/`top` is its bounding-box centre**, with `points` relative to the
+  box's top-left corner. Measured against painted pixels, a run asked for at (150,120)→(600,380)
+  lands on exactly that.
+- **Tags are positional** — sorted and numbered per prefix — so a drawing keeps its tag numbers
+  even though `load_json` regenerates every underlying object id on load.
+
+Measured end to end: a 400 px run bills as 5.00 m at 38.00/m = 190.00, a 160 px signal run as
+2.00 m at 6.40/m = 12.80, and the exported CSV carries the same numbers as the on-screen table.
 
 ## Notes
 
