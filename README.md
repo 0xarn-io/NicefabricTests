@@ -99,11 +99,14 @@ and follows the window; everything else lives in NiceGUI layout chrome:
   (validated against the same `https://`/`http://`/`data:image/` allow-list `load_json` uses —
   `add_image` itself passes `src` through unchecked).
 - **Right drawer — inspection.** Canvas settings (background, zoom, reset view) and a
-  properties panel for the selection: x/y, angle, opacity, fill, stroke, stroke width, font
-  size for text, plus lock, duplicate, z-order, delete. A `Selection JSON` expansion shows the
-  registry entries behind the selection, and an event log runs below it.
-- **Header `File` menu.** Save/load (server-side storage), SVG and PNG export (as downloads —
-  exported SVG embeds user-controlled URLs and must not be re-inlined into a page), clear.
+  properties panel for the selection: x/y, scale x/y, angle, opacity, fill, stroke, stroke
+  width, font size for text, plus lock, duplicate, z-order, delete (the action buttons appear
+  once something is selected). A `Selection JSON` expansion shows the registry entries behind
+  the selection, and an event log runs below it.
+- **Header `File` menu.** Save/load (server-side storage), JSON export/import as files
+  (`to_json` is uncapped, so export always succeeds — import goes through `load_json` and its
+  1 MB / 1000-object caps), SVG and PNG export (as downloads — exported SVG embeds
+  user-controlled URLs and must not be re-inlined into a page), clear.
 
 Machinery worth reading in the source:
 
@@ -117,6 +120,11 @@ Machinery worth reading in the source:
   `FabricObject.props`, so the registry stays the single source of truth and there is no
   update-echo loop to guard. Panel edits refresh only the JSON view — rebuilding widgets on
   every keystroke would destroy the slider mid-drag.
+- **Strokes use `strokeUniform`.** Scaling a Fabric object multiplies `scaleX`/`scaleY` and the
+  stroke scales with it, so a resized stroked rect is mathematically identical to a stretched
+  bitmap of the original — which is exactly what it looks like. `strokeUniform: true` (set by
+  the shape tools and by the panel's stroke-width slider) keeps the stroke at its set width
+  while the geometry scales.
 
 ## Notes
 

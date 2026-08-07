@@ -4,8 +4,9 @@ Demo 01 is a lab bench: canvas on one side, raw registry on the other. This is t
 library shaped like a *tool*. The canvas fills the whole page and resizes with the window;
 creation lives in the left drawer (shapes, free drawing, SVG insert, image by URL, and the
 style new shapes are born with); the right drawer edits whatever is selected — position,
-angle, opacity, colours, z-order, lock — plus canvas-wide settings (background, zoom).
-File operations sit in the header: save/load, SVG and PNG export, clear.
+scale, angle, opacity, colours, z-order, lock, duplicate — plus canvas-wide settings
+(background, zoom). File operations sit in the header: save/load to server-side storage,
+JSON export/import as files, SVG and PNG export, clear.
 
 The editor-specific machinery worth reading:
 
@@ -194,14 +195,19 @@ def index() -> None:
     def style() -> dict:
         s: dict = {'fill': fill_in.value}
         if int(stroke_width_in.value) > 0:
-            s |= {'stroke': stroke_in.value, 'strokeWidth': int(stroke_width_in.value)}
+            # strokeUniform keeps the stroke at its set width when the object is scaled.
+            # Without it the stroke scales along with the geometry — a resized stroked rect
+            # is then mathematically identical to a stretched bitmap of the original, which
+            # is exactly what it looks like.
+            s |= {'stroke': stroke_in.value, 'strokeWidth': int(stroke_width_in.value),
+                  'strokeUniform': True}
         return s
 
     def line_style() -> dict:
         # a line with no stroke is invisible, so fall back to the fill colour
         w = int(stroke_width_in.value) or 3
         return {'stroke': stroke_in.value if int(stroke_width_in.value) else fill_in.value,
-                'strokeWidth': w}
+                'strokeWidth': w, 'strokeUniform': True}
 
     async def add(kind: str) -> None:
         x, y = await view_center()
@@ -247,6 +253,23 @@ def index() -> None:
             return
         refresh_selection()
         ui.notify('loaded')
+
+    def export_json() -> None:
+        # to_json is uncapped, so this download always succeeds — even for a canvas that
+        # load_json/Import would refuse (demo 01's 1 MB trap)
+        ui.download(canvas.to_json().encode(), 'canvas.json')
+
+    async def import_json(e) -> None:
+        text = (await e.file.read()).decode('utf-8', errors='replace')
+        json_uploader.reset()
+        try:
+            canvas.load_json(text)   # str goes through the same caps as a dict
+        except ValueError as err:
+            ui.notify(f'{e.file.name}: {err}', type='negative')
+            return
+        json_dialog.close()
+        refresh_selection()
+        ui.notify(f'imported {e.file.name}')
 
     async def export_svg() -> None:
         try:
@@ -344,6 +367,18 @@ def index() -> None:
                     ui.number('y', value=round(props.get('top', 0), 1), format='%.0f',
                               on_change=lambda e: e.value is not None and put(obj.id, top=e.value)) \
                         .props('dense').classes('nf-y')
+                    # clamped: scale 0 collapses the transform matrix and the object vanishes
+                    # for good, so the panel refuses to go below 0.05
+                    ui.number('scale x', value=round(props.get('scaleX', 1), 2), step=0.1,
+                              format='%.2f',
+                              on_change=lambda e: e.value is not None
+                              and put(obj.id, scaleX=max(float(e.value), 0.05))) \
+                        .props('dense').classes('nf-scalex')
+                    ui.number('scale y', value=round(props.get('scaleY', 1), 2), step=0.1,
+                              format='%.2f',
+                              on_change=lambda e: e.value is not None
+                              and put(obj.id, scaleY=max(float(e.value), 0.05))) \
+                        .props('dense').classes('nf-scaley')
                 ui.label('angle').classes('text-xs text-gray-600 mt-1')
                 ui.slider(min=0, max=359, value=round(props.get('angle', 0)) % 360,
                           on_change=lambda e: put(obj.id, angle=e.value)) \
@@ -360,8 +395,10 @@ def index() -> None:
                                    on_change=lambda e: put(obj.id, stroke=e.value)) \
                         .props('dense').classes('nf-stroke grow')
                 ui.label('stroke width').classes('text-xs text-gray-600')
+                # strokeUniform rides along so a stroke added here stays put under scaling
                 ui.slider(min=0, max=20, value=int(props.get('strokeWidth') or 0),
-                          on_change=lambda e: put(obj.id, strokeWidth=e.value)) \
+                          on_change=lambda e: put(obj.id, strokeWidth=e.value,
+                                                  strokeUniform=True)) \
                     .props('label').classes('nf-strokewidth')
                 if props['type'] in TEXT_TYPES:
                     ui.label('font size').classes('text-xs text-gray-600')
@@ -391,6 +428,16 @@ def index() -> None:
     # ================================================================== layout ==========
     ui.query('.nicegui-content').classes('p-0 gap-0')
 
+    with ui.dialog() as json_dialog, ui.card().classes('w-96'):
+        ui.label('Import canvas JSON').classes('font-bold')
+        ui.label('Replaces everything on the canvas via load_json — its caps apply: '
+                 '1 MB, 1000 objects, allow-listed types.').classes('text-xs text-gray-500')
+        json_uploader = ui.upload(label='canvas.json', auto_upload=True,
+                                  max_file_size=2_000_000, on_upload=import_json,
+                                  on_rejected=lambda: ui.notify('file too large',
+                                                                type='negative')) \
+            .props('accept=".json,application/json" flat dense no-thumbnails').classes('w-full')
+
     with ui.header().classes('bg-slate-900 items-center gap-2 px-3 py-1'):
         ui.button(icon='menu', on_click=lambda: toggle_drawer(left)) \
             .props('flat dense color=white')
@@ -400,6 +447,9 @@ def index() -> None:
             with ui.menu():
                 ui.menu_item('Save', save)
                 ui.menu_item('Load', load)
+                ui.separator()
+                ui.menu_item('Export JSON', export_json)
+                ui.menu_item('Import JSON…', json_dialog.open)
                 ui.separator()
                 ui.menu_item('Export SVG', export_svg)
                 ui.menu_item('Export PNG', export_png)
@@ -447,7 +497,8 @@ def index() -> None:
         fill_in = ui.color_input('fill', value='#3b82f6').props('dense').classes('w-full')
         stroke_in = ui.color_input('stroke', value='#1e293b').props('dense').classes('w-full')
         ui.label('stroke width').classes('text-xs text-gray-600')
-        stroke_width_in = ui.slider(min=0, max=12, value=0).props('label')
+        stroke_width_in = ui.slider(min=0, max=12, value=0).props('label') \
+            .classes('nf-new-strokewidth')
 
         ui.separator().classes('my-2')
         ui.label('Insert').classes('text-xs font-bold text-gray-500 uppercase')
