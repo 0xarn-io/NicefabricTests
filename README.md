@@ -31,7 +31,7 @@ Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 | -- | ------------------------------------ | ---- | -------------------------------------------------------- |
 | 01 | [`01_shapes.py`](demos/01_shapes.py) | 9090 | Every `add_*` shape helper, SVG import, locking, selection, and the live server-side registry |
 | 02 | [`02_editor.py`](demos/02_editor.py) | 9091 | The same library shaped like a tool: a full-page 2D editor with drawer-based tools, a properties panel, and the whole file suite |
-| 03 | [`03_agv_tracks.py`](demos/03_agv_tracks.py) | 9092 | A domain editor: drag AGV path elements from a palette onto a metric snapping grid, and get told which ports are still open |
+| 03 | [`03_agv_tracks.py`](demos/03_agv_tracks.py) | 9092 | A domain editor in the idiom of fleet-commissioning software: laser-scan underlay, drag-and-drop route elements on a metric snapping grid, node/properties/telemetry docks |
 
 ### 01 — shapes, SVG import, locking, and the registry
 
@@ -129,20 +129,24 @@ Machinery worth reading in the source:
   brush path, an SVG-parsed shape) do not carry it, so `ensure_uniform_strokes()` backfills it
   after load, after JSON import, and after each free-hand stroke.
 
-### 03 — AGV layout editor
+### 03 — AGV route studio
 
-A *domain* editor rather than a general one, drawn the way commissioning software draws a
-layout: a dark CAD field with a metric grid (minor line per cell, major every five), path
-centrelines inside a translucent vehicle envelope, node markers where segments meet, and
-compact geometric station symbols. One grid cell is 1.0 m, so the docks report in metres —
-element count, connections, stations, total track length — and the status bar carries a live
-cursor coordinate readout.
+A *domain* editor rather than a general one, laid out the way fleet-commissioning suites are:
+mode tabs across the top, the site field in the middle, a stacked Objects / Properties /
+Vehicle sidebar on the right, and a status bar carrying live cursor coordinates and a sync
+state. The field follows the same idiom — white site with a metric grid and edge rulers, the
+laser scan underneath as red returns, violet route splines, numbered node circles at junctions
+and stations, and direction chevrons along each segment.
 
-Every object on the canvas is one path element: straight, 90° curve, fork, crossing, charger,
-load / unload station, end stop. Drag one out of the palette and it lands on the cell you
-dropped it on; drag a placed element and it snaps back to the grid; press <kbd>R</kbd> to
-rotate the selection. The connectivity pass lists every port still open, so a finished loop
-reports *network closed — all ports connected*.
+One grid cell is 1.0 m, so everything reports in metres. Every object on the canvas is one
+route element: segment, 90° curve, turnout, crossing, charger, pick / drop station, end stop.
+Drag one out of the palette and it lands on the cell you dropped it on; drag a placed element
+and it snaps back to the grid; press <kbd>R</kbd> to rotate. The connectivity pass reports
+every port still open, so a finished loop reads *network closed — synchronized*.
+
+Node ids are **positional**, not object ids — sorted by position and numbered from 1001 — so
+the same layout always yields the same ids even though `load_json` regenerates every
+underlying object id on load.
 
 Four decisions carry the design:
 
@@ -161,14 +165,27 @@ Four decisions carry the design:
   the position after a drag; both are rounded to the cell grid and to 90° and written back
   with `update_object`. The browser never decides where a piece actually is.
 
+- **Node captions are a derived layer.** They are separate `Text` objects held at `angle=0`,
+  because a caption baked into the tile art would rotate with the tile and read upside down at
+  180°. They carry `kind='label'` so the connectivity pass skips them, and are rebuilt only
+  when the layout signature changes, so a plain drag does not churn the registry.
 - **Elements cannot be scaled.** `lockScalingX`/`lockScalingY` are set on every placed
-  element. Path geometry is fixed: a stretched curve would no longer meet its neighbours.
+  element. Route geometry is fixed: a stretched curve would no longer meet its neighbours.
 
 Drag and drop is real HTML5 DnD: the palette rows are drag sources, and a `drop` listener on
-the canvas wrapper hands the pointer position back through NiceGUI's `emitEvent`. The cursor
-coordinate readout is updated straight from JS — a coordinate display does not need a server
-round trip. The grid is a CSS background on the canvas element, showing through because the
-Fabric background is left transparent.
+the canvas hands the pointer position back through NiceGUI's `emitEvent`. That position is in
+screen pixels, so it is divided back through the zoom before snapping — otherwise a drop made
+while zoomed lands on the wrong cell. The cursor readout and the edge rulers are painted
+straight from JS: neither needs a server round trip, and rulers as DOM never enter the object
+registry.
+
+Two things that bite when styling this element:
+
+- **A `data:` URL cannot go in a NiceGUI `style` attribute.** It contains `;base64,`, and the
+  inline-style parser splits on `;`. The laser scan therefore lives in real CSS on its own
+  layer behind the transparent canvas, which also lets the scan and grid toggle independently.
+- **`element.classes(replace=…)` drops every existing class**, including any hook you are
+  using to find the element later.
 
 Station symbols are read *relative to the stub* rather than drawn upright — the whole tile
 rotates with the element, so a glyph drawn across the stub would point somewhere arbitrary
