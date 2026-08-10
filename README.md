@@ -33,6 +33,7 @@ Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 | 02 | [`02_editor.py`](demos/02_editor.py) | 9091 | The same library shaped like a tool: a full-page 2D editor with drawer-based tools, a properties panel, and the whole file suite |
 | 03 | [`03_agv_tracks.py`](demos/03_agv_tracks.py) | 9092 | A domain editor in the idiom of fleet-commissioning software: laser-scan underlay, drag-and-drop route elements on a metric snapping grid, node/properties/telemetry docks |
 | 04 | [`04_pid_bom.py`](demos/04_pid_bom.py) | 9093 | A P&ID editor whose bill of materials builds itself: SKU-tagged ISA symbols, click-to-draw pipe runs billed by length, CSV export |
+| 05 | [`05_ethercat_cabinets.py`](demos/05_ethercat_cabinets.py) | 9094 | EtherCAT cabinet planner: DIN rails that pack terminals left-to-right, an E-bus current audit, and a BOM general **and** per location |
 
 ### 01 — shapes, SVG import, locking, and the registry
 
@@ -224,6 +225,41 @@ The two header tabs switch views: **Diagram** keeps the BOM as a strip under the
 
 Measured end to end: a 400 px run bills as 5.00 m at 38.00/m = 190.00, a 160 px signal run as
 2.00 m at 6.40/m = 12.80, and the exported CSV carries the same numbers as the on-screen table.
+
+### 05 — EtherCAT cabinet planner
+
+Same shape as the P&ID, but the model is **containment** rather than a free sheet: a terminal
+belongs to a rail, a rail belongs to a cabinet, and terminals pack left to right with no gaps.
+Drop one between two others and the rest shuffle right, the way real terminals behave. That
+structure is what makes a per-location BOM mean anything — the panel switches between a
+**General** roll-up and a **By location** breakdown (`+CAB01`, `+CAB02`, …), and the CSV export
+carries both.
+
+The drawing is also audited, not just counted:
+
+- **E-bus current budget.** An `EK1100` supplies 2000 mA; every terminal to its right draws it
+  down and an `EL9410` refreshes it. The panel walks each rail in order and reports the
+  headroom, naming the terminal where it goes negative — measured: 11 × `EL5101` at 200 mA
+  against a 2000 mA supply reports *short by 200 mA at EL5101*.
+- **Bus end cap.** A segment must finish with an `EL9011`; a rail without one is flagged.
+- **Rail fill.** Terminal widths summed in millimetres against the usable rail length.
+
+Containment cannot be stored as object references, because `load_json` **re-ids every object**.
+Each terminal instead carries its location designation and rail index as plain custom props,
+and its order along the rail is simply its `left` — sorted and re-packed on every layout pass.
+Nothing points at an id, so a save/load round trip keeps the whole hierarchy.
+
+Terminal part numbers are printed **vertically inside the terminal artwork**, the way Beckhoff
+prints them. That relies on `<text>` rendering inside a `data:` URL SVG loaded as a Fabric
+`Image` — verified by pixel-measuring the glyphs before building on it. Only generic font
+families are available there; an SVG loaded as an image cannot fetch external fonts.
+
+Two deliberate simplifications: each rail is audited as its own E-bus segment (on real hardware
+a segment carries across rails through an `EK1110`/`EK1100` pair), and cabinets are drawn to fit
+their rails rather than to enclosure scale.
+
+> Part numbers are real Beckhoff designations, but the widths, E-bus figures and prices are
+> **representative values for the demo** — not a datasheet or a price list.
 
 ## Notes
 
