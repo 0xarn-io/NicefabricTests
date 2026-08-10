@@ -33,7 +33,7 @@ Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 | 02 | [`02_editor.py`](demos/02_editor.py) | 9091 | The same library shaped like a tool: a full-page 2D editor with drawer-based tools, a properties panel, and the whole file suite |
 | 03 | [`03_agv_tracks.py`](demos/03_agv_tracks.py) | 9092 | A domain editor in the idiom of fleet-commissioning software: laser-scan underlay, drag-and-drop route elements on a metric snapping grid, node/properties/telemetry docks |
 | 04 | [`04_pid_bom.py`](demos/04_pid_bom.py) | 9093 | A P&ID editor whose bill of materials builds itself: SKU-tagged ISA symbols, click-to-draw pipe runs billed by length, CSV export |
-| 05 | [`05_ethercat_cabinets.py`](demos/05_ethercat_cabinets.py) | 9094 | EtherCAT cabinet planner: Rittal AX enclosures whose plates size the DIN rails, terminals that pack left-to-right, an E-bus current audit, and a BOM general **and** per location |
+| 05 | [`05_ethercat_cabinets.py`](demos/05_ethercat_cabinets.py) | 9094 | EtherCAT cabinet planner: Rittal AX enclosures whose plates size the DIN rails, a 39-part filterable terminal catalogue that packs left-to-right, an E-bus current audit, and a BOM general **and** per location |
 
 ### 01 — shapes, SVG import, locking, and the registry
 
@@ -260,19 +260,6 @@ rail-fill check out of room — and the enclosure bills in the BOM next to the t
 rails are spaced for legibility rather than drawn to plate scale; their length and count are the
 real derived figures.
 
-Links between cabinets are **pre-assembled Beckhoff cables**, picked by family and length:
-
-| Family | Cable |
-| ------ | ----- |
-| `ZK1090-9191-Cxxx` | EtherCAT patch cable, green, RJ45 plug 8-pin both ends |
-| `ZK7001-0101-2xxx` | EtherCAT P, M8 male straight 4-pin both ends |
-| `ZK4704-0421-2xxx` | Motor cable 0.75 mm² PUR, itec® plug, **OCT one-cable**, drag-chain |
-
-Each is drawn in its own colour and weight, and the BOM groups by family **and** length — a 5 m
-and a 10 m EtherCAT lead are different orderable parts, so they get separate lines, while two
-identical leads merge into one row of qty 2. The trailing `xxx` is Beckhoff's length code, left
-unresolved on purpose rather than inventing a digit encoding for the demo.
-
 Cabinets lay out on a wrapping grid and the sheet grows to hold them, scrolling inside the
 stage — a single unbounded row put the third cabinet past the right edge where nothing could be
 dropped on it.
@@ -288,21 +275,41 @@ light grey housing — a rail full of yellow would read as though the whole thin
 safety-rated. The coloured stripe along the top of each terminal is the editor's own signal-type
 coding (green DI, red DO, blue AI, …), not Beckhoff livery.
 
-Terminal part numbers are printed **vertically inside the terminal artwork**, the way Beckhoff
-prints them. That relies on `<text>` rendering inside a `data:` URL SVG loaded as a Fabric
-`Image` — verified by pixel-measuring the glyphs before building on it. Only generic font
+**RJ45 sockets are drawn where the real part has them**, and only there: two on the `EK1100`
+coupler and on the `EK1960`, one on the `EK1110` extension, two on the `EK1122` junction.
+Everything else on the rail reaches its neighbours over the E-bus through the side contacts and
+has no socket at all, so the artwork tells you at a glance where EtherCAT enters and leaves a
+segment. Terminal part numbers are printed **vertically inside the housing**, the way Beckhoff
+prints them. Both rely on `<text>` and shapes rendering inside a `data:` URL SVG loaded as a
+Fabric `Image` — verified by pixel-measuring the glyphs before building on it. Only generic font
 families are available there; an SVG loaded as an image cannot fetch external fonts.
 
 One deliberate simplification: each rail is audited as its own E-bus segment, where on real
 hardware a segment carries across rails through an `EK1110`/`EK1100` pair.
 
-The catalogue covers infrastructure (`EK1100`, `EK1110`, `EL9410`, `EL9011`, potential
-distribution), digital (`EL1008`, `EL1409`, `EL1809`, `EL2008`, `EL2409`, `EL2809`), analog,
-comms & special (`EL5101`, `EL6001`, `EL6224` IO-Link master, `EL2574` pixel LED, `EL7031`)
-and safety (`EL6910` TwinSAFE Logic, `EK1960` TwinSAFE Compact Controller). The `EK1960` is
-126 mm wide and carries its own EtherCAT connectors, so it heads its own segment rather than
-drawing from an upstream coupler — which also makes it the part that shows off the packing,
-since it swallows a sixth of a rail on its own.
+**39 parts, and a palette that says what each one is.** Every row carries the artwork, the part
+number, a signal-group chip, the description, and the three numbers the design runs on —
+`12 mm · −90 mA · 155.00`, plus the RJ45 count where there is one. Scrolling a list that long to
+decide whether the pixel LED terminal is even in there is how you conclude it is not, so the
+palette filters as you type across part number, description and group: `2574` and `pixel` both
+land on the `EL2574`, `thermo` on the `EL3314`, `twinsafe` on all four safety parts.
+
+| Group | Parts |
+| ----- | ----- |
+| Infrastructure | `EK1100`, `EK1110`, `EK1122`, `EL9410`, `EL9505`, `EL9011`, `EL9186`, `EL9187` |
+| Digital | `EL1008`, `EL1409`, `EL1809`, `EL1252`, `EL1859`, `EL2008`, `EL2409`, `EL2809`, `EL2521`, `EL2634` |
+| Analog | `EL3054`, `EL3062`, `EL3102`, `EL3204`, `EL3314`, `EL3356`, `EL4004`, `EL4032` |
+| Comms & special | `EL5101`, `EL6001`, `EL6021`, `EL6731`, `EL6224` IO-Link, `EL2574` pixel LED |
+| Motion | `EL7031`, `EL7041`, `EL7211` servo OCT |
+| Safety | `EL1904`, `EL2904`, `EL6910` TwinSAFE Logic, `EK1960` TwinSAFE Compact Controller |
+
+The `EK1960` is 126 mm wide and carries its own EtherCAT connectors, so it heads its own segment
+rather than drawing from an upstream coupler — which also makes it the part that shows off the
+packing, since it swallows a sixth of a rail on its own.
+
+Measured end to end: an `EK1100` + `EK1122` + `EL3314` + `EL7211` + `EL9011` rail reads
+*112/450 mm* and *E-bus headroom 1340 mA* — 44 + 24 + 12 + 24 + 8 mm, and 2000 − 350 − 130 − 180
+mA — with all five parts on the BOM at their catalogue prices.
 
 > Part numbers and functions were checked against Beckhoff's and Rittal's product pages, and
 > the enclosure and plate dimensions are the published ones — but the terminal widths, E-bus

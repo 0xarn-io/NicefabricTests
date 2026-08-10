@@ -36,15 +36,17 @@ Simplifications worth knowing before reading the checks:
 * **The rail layout is derived, not drawn to plate scale.** Rail length and count come from the
   real plate dimensions, but the drawing spaces the rails for legibility rather than rendering
   the enclosure to scale.
-* **Cables are pre-assembled parts, not measured runs.** A link carries a family and one of
-  the offered lengths, so the BOM lists an orderable lead rather than metres off the drawing.
-  The trailing ``xxx`` in each family is Beckhoff's own length code, deliberately left
-  unresolved rather than inventing a digit encoding.
+* **Wiring is not drawn.** The catalogue is terminals and enclosures; field cabling and the
+  leads between cabinets are out of scope, so the BOM is a hardware list rather than a full
+  order.
 
-Housing colour is not decoration: on Beckhoff hardware **yellow means TwinSAFE**, so only the
-safety devices are drawn yellow and everything else takes the standard light grey. The coloured
-stripe along the top of each terminal is this editor's own signal-type coding, not Beckhoff
-livery.
+The artwork follows the front face. Only the parts that actually carry EtherCAT on a cable get
+**RJ45 sockets** — the ``EK1100`` coupler and the ``EK1960`` with two, the ``EK1110`` extension
+with one, the ``EK1122`` junction with two — because everything else on the rail talks to its
+neighbours over the E-bus through the side contacts and has no socket at all. Housing colour is
+not decoration either: on Beckhoff hardware **yellow means TwinSAFE**, so only the safety
+devices are drawn yellow and everything else takes the standard light grey. The coloured stripe
+along the top of each terminal is this editor's own signal-type coding, not Beckhoff livery.
 
 .. warning::
    Part numbers are real Beckhoff and Rittal designations and the enclosure/plate sizes are the
@@ -72,7 +74,7 @@ PX_PER_MM = 1.35                     # terminals are 12 mm wide; this keeps them
 TERM_H = round(100 * PX_PER_MM)      # terminal height, 100 mm
 CAB_PAD = 26
 RAIL_PITCH = TERM_H + 55             # rail-to-rail spacing on the drawing
-CAB_X0, CAB_Y0, CAB_GAP = 240, 36, 50   # first cabinet clears the palette dock
+CAB_X0, CAB_Y0, CAB_GAP = 300, 36, 50   # first cabinet clears the 264 px palette dock
 MAX_ROW = 2000                          # wrap a row of cabinets past this width
 ROW_BAND = RAIL_PITCH // 2              # top edges within this band count as the same row
 
@@ -118,14 +120,21 @@ STRIPE = {'DI': '#22c55e', 'DO': '#ef4444', 'AI': '#3b82f6', 'AO': '#8b5cf6',
           'MOT': '#f97316', 'COM': '#0ea5e9', 'PWR': '#64748b', 'SYS': '#64748b',
           'IOL': '#0891b2', 'LED': '#d946ef', 'SAF': '#b91c1c'}
 
-# part -> width_mm, E-bus mA (positive supplies, negative draws), price, signal group
+# part -> width_mm, E-bus mA (positive supplies, negative draws), price, signal group, and the
+# number of RJ45 sockets on the front face. Only the parts that carry EtherCAT on a cable have
+# any: an ordinary EL terminal talks to its neighbours over the E-bus through the side contacts.
+CATEGORIES = ('Infrastructure', 'Digital', 'Analog', 'Comms & special', 'Motion', 'Safety')
 CATALOG: dict[str, dict] = {
     'EK1100': {'desc': 'EtherCAT coupler, E-bus', 'w': 44, 'ebus': EBUS_SUPPLY,
-               'price': 118.0, 'grp': 'SYS', 'cat': 'Infrastructure'},
+               'price': 118.0, 'grp': 'SYS', 'cat': 'Infrastructure', 'rj45': 2},
     'EK1110': {'desc': 'EtherCAT extension, E-bus to RJ45', 'w': 12, 'ebus': -60,
-               'price': 96.0, 'grp': 'SYS', 'cat': 'Infrastructure'},
+               'price': 96.0, 'grp': 'SYS', 'cat': 'Infrastructure', 'rj45': 1},
+    'EK1122': {'desc': 'EtherCAT junction, 2 port, RJ45', 'w': 24, 'ebus': -350,
+               'price': 265.0, 'grp': 'SYS', 'cat': 'Infrastructure', 'rj45': 2},
     'EL9410': {'desc': 'E-bus power supply refresh', 'w': 12, 'ebus': EBUS_SUPPLY,
                'price': 96.0, 'grp': 'PWR', 'cat': 'Infrastructure'},
+    'EL9505': {'desc': 'Power supply terminal, 5 V DC', 'w': 12, 'ebus': -90, 'price': 88.0,
+               'grp': 'PWR', 'cat': 'Infrastructure'},
     'EL9011': {'desc': 'Bus end cap', 'w': 8, 'ebus': 0, 'price': 7.0,
                'grp': 'SYS', 'cat': 'Infrastructure'},
     'EL9186': {'desc': 'Potential distribution, 24 V, 8x', 'w': 12, 'ebus': 0, 'price': 28.0,
@@ -138,21 +147,43 @@ CATALOG: dict[str, dict] = {
                'ebus': -90, 'price': 155.0, 'grp': 'DI', 'cat': 'Digital'},
     'EL1809': {'desc': 'Digital input, 16 ch, 24 V DC', 'w': 12, 'ebus': -90, 'price': 155.0,
                'grp': 'DI', 'cat': 'Digital'},
+    'EL1252': {'desc': 'Digital input, 2 ch, 24 V DC, timestamp', 'w': 12, 'ebus': -130,
+               'price': 220.0, 'grp': 'DI', 'cat': 'Digital'},
+    'EL1859': {'desc': 'Digital combi, 8 in / 8 out, 24 V DC', 'w': 12, 'ebus': -130,
+               'price': 180.0, 'grp': 'DI', 'cat': 'Digital'},
     'EL2008': {'desc': 'Digital output, 8 ch, 24 V DC 0.5 A', 'w': 12, 'ebus': -110,
                'price': 102.0, 'grp': 'DO', 'cat': 'Digital'},
     'EL2409': {'desc': 'Digital output, 16 ch, 24 V DC 0.5 A, positive switching', 'w': 12,
                'ebus': -140, 'price': 168.0, 'grp': 'DO', 'cat': 'Digital'},
     'EL2809': {'desc': 'Digital output, 16 ch, 24 V DC 0.5 A', 'w': 12, 'ebus': -140,
                'price': 168.0, 'grp': 'DO', 'cat': 'Digital'},
+    'EL2521': {'desc': 'Pulse train output, 1 ch', 'w': 12, 'ebus': -120, 'price': 245.0,
+               'grp': 'DO', 'cat': 'Digital'},
+    'EL2634': {'desc': 'Relay output, 4 ch, 250 V AC / 30 V DC', 'w': 24, 'ebus': -140,
+               'price': 195.0, 'grp': 'DO', 'cat': 'Digital'},
     'EL3054': {'desc': 'Analog input, 4 ch, 4..20 mA', 'w': 12, 'ebus': -130, 'price': 260.0,
                'grp': 'AI', 'cat': 'Analog'},
     'EL3062': {'desc': 'Analog input, 2 ch, 0..10 V', 'w': 12, 'ebus': -130, 'price': 200.0,
                'grp': 'AI', 'cat': 'Analog'},
+    'EL3102': {'desc': 'Analog input, 2 ch, -10..+10 V, differential', 'w': 12, 'ebus': -190,
+               'price': 320.0, 'grp': 'AI', 'cat': 'Analog'},
+    'EL3204': {'desc': 'Analog input, 4 ch, PT100 RTD', 'w': 12, 'ebus': -130, 'price': 290.0,
+               'grp': 'AI', 'cat': 'Analog'},
+    'EL3314': {'desc': 'Analog input, 4 ch, thermocouple', 'w': 12, 'ebus': -130,
+               'price': 320.0, 'grp': 'AI', 'cat': 'Analog'},
+    'EL3356': {'desc': 'Analog input, 1 ch, resistor bridge / load cell', 'w': 12, 'ebus': -130,
+               'price': 480.0, 'grp': 'AI', 'cat': 'Analog'},
     'EL4004': {'desc': 'Analog output, 4 ch, 0..10 V', 'w': 12, 'ebus': -130, 'price': 310.0,
                'grp': 'AO', 'cat': 'Analog'},
+    'EL4032': {'desc': 'Analog output, 2 ch, -10..+10 V', 'w': 12, 'ebus': -180,
+               'price': 300.0, 'grp': 'AO', 'cat': 'Analog'},
     'EL5101': {'desc': 'Incremental encoder interface', 'w': 12, 'ebus': -200, 'price': 280.0,
                'grp': 'COM', 'cat': 'Comms & special'},
     'EL6001': {'desc': 'Serial interface, RS232', 'w': 12, 'ebus': -100, 'price': 190.0,
+               'grp': 'COM', 'cat': 'Comms & special'},
+    'EL6021': {'desc': 'Serial interface, RS422 / RS485', 'w': 12, 'ebus': -100,
+               'price': 200.0, 'grp': 'COM', 'cat': 'Comms & special'},
+    'EL6731': {'desc': 'PROFIBUS master', 'w': 12, 'ebus': -250, 'price': 690.0,
                'grp': 'COM', 'cat': 'Comms & special'},
     'EL6224': {'desc': 'IO-Link master, 4 ch, HD housing', 'w': 12, 'ebus': -130,
                'price': 325.0, 'grp': 'IOL', 'cat': 'Comms & special'},
@@ -160,36 +191,39 @@ CATALOG: dict[str, dict] = {
     'EL2574': {'desc': 'Pixel LED output, 4 ch, ext. 5..24 V per channel', 'w': 12,
                'ebus': -130, 'price': 340.0, 'grp': 'LED', 'cat': 'Comms & special'},
     'EL7031': {'desc': 'Stepper motor terminal, 24 V, 1.5 A', 'w': 24, 'ebus': -130,
-               'price': 260.0, 'grp': 'MOT', 'cat': 'Comms & special'},
+               'price': 260.0, 'grp': 'MOT', 'cat': 'Motion'},
+    'EL7041': {'desc': 'Stepper motor terminal, 50 V, 5 A', 'w': 24, 'ebus': -130,
+               'price': 340.0, 'grp': 'MOT', 'cat': 'Motion'},
+    'EL7211': {'desc': 'Servomotor terminal, 48 V, 4.5 A rms, OCT', 'w': 24, 'ebus': -180,
+               'price': 690.0, 'grp': 'MOT', 'cat': 'Motion'},
+    'EL1904': {'desc': 'TwinSAFE input, 4 ch, 24 V DC', 'w': 12, 'ebus': -140, 'price': 480.0,
+               'grp': 'SAF', 'cat': 'Safety'},
+    'EL2904': {'desc': 'TwinSAFE output, 4 ch, 24 V DC 0.5 A', 'w': 12, 'ebus': -150,
+               'price': 560.0, 'grp': 'SAF', 'cat': 'Safety'},
     'EL6910': {'desc': 'TwinSAFE Logic terminal', 'w': 12, 'ebus': -200, 'price': 1150.0,
                'grp': 'SAF', 'cat': 'Safety'},
     # a compact controller with its own EtherCAT connectors, so it heads its own segment
     # rather than drawing from an upstream coupler
     'EK1960': {'desc': 'TwinSAFE Compact Controller, 20 safe DI / 24 safe DO (2 A)', 'w': 126,
-               'ebus': EBUS_SUPPLY, 'price': 1800.0, 'grp': 'SAF', 'cat': 'Safety'},
+               'ebus': EBUS_SUPPLY, 'price': 1800.0, 'grp': 'SAF', 'cat': 'Safety', 'rj45': 2},
 }
 
 
 
-# Pre-assembled Beckhoff cable families. The trailing `xxx` is Beckhoff's length code, left
-# unresolved here on purpose: the BOM carries the family plus the chosen length rather than a
-# digit encoding invented for the demo. Price is modelled base + per metre.
-CABLES: dict[str, dict] = {
-    'ethercat': {'label': 'EtherCAT', 'family': 'ZK1090-9191-Cxxx',
-                 'desc': 'EtherCAT patch cable, green, RJ45 plug 8-pin both ends',
-                 'colour': '#15803d', 'stroke': 2.4, 'base': 18.0, 'per_m': 4.8},
-    'ethercatp': {'label': 'EtherCAT P', 'family': 'ZK7001-0101-2xxx',
-                  'desc': 'EtherCAT P cable, M8 male straight 4-pin both ends',
-                  'colour': '#d97706', 'stroke': 3.2, 'base': 50.0, 'per_m': 9.0},
-    'hybrid': {'label': 'Hybrid OCT', 'family': 'ZK4704-0421-2xxx',
-               'desc': 'Motor cable 0.75 mm2 PUR, itec plug, OCT one-cable, drag-chain',
-               'colour': '#1f2937', 'stroke': 4.4, 'base': 110.0, 'per_m': 16.0},
-}
-CABLE_LENGTHS = (2, 5, 10)      # the pre-assembled lengths this demo offers
+def _rj45(x: float, y: float, w: float, h: float) -> str:
+    """An RJ45 socket: shell, the latch slot under it, and the gold contacts inside."""
+    pins = ''.join(f'<line x1="{x + w * (0.22 + 0.09 * i)}" y1="{y + 1.8}" '
+                   f'x2="{x + w * (0.22 + 0.09 * i)}" y2="{y + h * 0.52}" '
+                   f'stroke="#c9a227" stroke-width="0.6"/>' for i in range(7))
+    return (f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="1" fill="#eef0f3" '
+            f'stroke="{EDGE}" stroke-width="0.8"/>'
+            f'<rect x="{x + w * 0.35}" y="{y + h - 3.2}" width="{w * 0.3}" height="4.4" '
+            f'rx="0.6" fill="#eef0f3" stroke="{EDGE}" stroke-width="0.8"/>{pins}')
 
 
 def _terminal_art(part: str) -> str:
-    """A terminal: coloured body, signal stripe, LED column, part number printed vertically."""
+    """A terminal: coloured body, signal stripe, the RJ45 sockets the real part carries, an LED
+    column and the part number printed vertically."""
     spec = CATALOG[part]
     w, h = round(spec['w'] * PX_PER_MM), TERM_H
     fill = SAFETY if spec['cat'] == 'Safety' else STANDARD
@@ -197,12 +231,20 @@ def _terminal_art(part: str) -> str:
     body = (f'<rect x="0.6" y="0.6" width="{w - 1.2}" height="{h - 1.2}" rx="2" '
             f'fill="{fill}" stroke="{EDGE}" stroke-width="1.1"/>'
             f'<rect x="0.6" y="0.6" width="{w - 1.2}" height="5" rx="1.5" fill="{stripe}"/>')
+    # EtherCAT enters and leaves a segment through these, so the couplers, the junction and the
+    # compact safety controller wear them; a plain EL terminal talks over the E-bus and has none
+    port_w, cursor = min(w - 5, 21), 10.0
+    for _ in range(spec.get('rj45', 0)):
+        body += _rj45((w - port_w) / 2, cursor, port_w, 13)
+        cursor += 17
     if w >= 15:      # an 8 mm end cap has no room for a legible part number
-        body += (f'<text x="{w / 2}" y="{h * 0.56}" font-family="Arial, Helvetica, sans-serif" '
+        led_y = cursor + 6 if spec.get('rj45') else 16
+        text_y = max(h * 0.56, led_y + 30)
+        body += (f'<text x="{w / 2}" y="{text_y}" font-family="Arial, Helvetica, sans-serif" '
                  f'font-size="9" fill="#111827" text-anchor="middle" '
-                 f'transform="rotate(-90 {w / 2} {h * 0.56})">{part}</text>')
+                 f'transform="rotate(-90 {w / 2} {text_y})">{part}</text>')
         for i in range(3):    # status LEDs, as on the real front face
-            body += (f'<circle cx="{w / 2}" cy="{16 + i * 8}" r="1.7" fill="#ffffff" '
+            body += (f'<circle cx="{w / 2}" cy="{led_y + i * 8}" r="1.7" fill="#ffffff" '
                      f'stroke="{EDGE}" stroke-width="0.5"/>')
         body += (f'<rect x="2.5" y="{h - 34}" width="{w - 5}" height="26" rx="1.5" '
                  f'fill="none" stroke="{EDGE}" stroke-width="0.7"/>')
@@ -244,37 +286,12 @@ LABEL_PROPS = {'kind': 'label', 'selectable': False, 'evented': False, 'fontSize
 
 @ui.page('/')  # per-visit page: a module-level canvas would be shared by ALL tabs and users
 def index() -> None:
-    state = {'tool': 'select', 'pending': None, 'labels': '', 'view': 'layout',
-             'bom': 'general'}
-
-    def live_props() -> dict:
-        """Objects only react while Select is active — otherwise a click meant to pick a
-        cabinet for a cable would select and drag a terminal instead."""
-        live = state['tool'] == 'select'
-        return {'selectable': live, 'evented': live}
-
-    def on_mouse_down(e) -> None:
-        if state['tool'] != 'cable':
-            return
-        hit = cabinet_at(e.args['x'], e.args['y'])
-        if hit is None:
-            status_hint.text = 'click on a cabinet to start the cable'
-            return
-        if state['pending'] is None:
-            state['pending'] = hit['id']
-            status_hint.text = f'from {designations().get(hit["id"], "?")} — click the far end'
-            return
-        if state['pending'] != hit['id']:
-            draw_cable(state['pending'], hit['id'])
-        state['pending'] = None
-        status_hint.text = 'click a cabinet to start another cable'
-        refresh()
+    state = {'labels': '', 'view': 'layout', 'bom': 'general', 'filter': ''}
 
     canvas = FabricCanvas(width=1400, height=700, background='',
                           keyboard_delete=True,
                           on_selection=lambda e: refresh(),
                           on_modified=lambda e: (reflow(), refresh()),
-                          on_mouse_down=on_mouse_down,
                           on_error=lambda e: log.push(f'ERROR {e.args}'))
 
     # ------------------------------------------------------------------ registry views ---
@@ -292,9 +309,6 @@ def index() -> None:
 
     def terminals() -> list[dict]:
         return [o for o in objs() if o.get('kind') in CATALOG]
-
-    def cables() -> list[dict]:
-        return [o for o in objs() if o.get('kind') == 'cable']
 
     def designations() -> dict[str, str]:
         """Cabinet id -> location designation, numbered by position so it survives a load."""
@@ -392,14 +406,8 @@ def index() -> None:
         return report
 
     # ------------------------------------------------------------------ bill of materials -
-    def cable_spec(cable: dict) -> tuple[dict, float]:
-        """The catalogue entry and length behind a drawn cable, tolerating older saves."""
-        kind = cable.get('cableType') if cable.get('cableType') in CABLES else 'ethercat'
-        return CABLES[kind], float(cable.get('lengthM') or 5)
-
     def bom_rows(by_location: bool) -> list[dict]:
-        """Aggregate the layout into line items. Cables group by family *and* length, since a
-        2 m and a 10 m lead are different orderable parts."""
+        """Aggregate the layout into line items, either rolled up or split per location."""
         tags = designations()
         buckets: dict[tuple[str, str, str, float], int] = {}
 
@@ -419,10 +427,6 @@ def index() -> None:
             spec = CATALOG[term['kind']]
             add(tags.get(cab['id'], '(unplaced)') if cab else '(unplaced)',
                 term['kind'], spec['desc'], spec['price'])
-        for cable in cables():
-            spec, length = cable_spec(cable)
-            add(tags.get(cable.get('fromId'), '(inter-cabinet)'), spec['family'],
-                f'{spec["desc"]}, {length:g} m', spec['base'] + spec['per_m'] * length)
 
         rows = []
         for (loc, part, desc, price), qty in sorted(buckets.items()):
@@ -466,7 +470,7 @@ def index() -> None:
                 bottom = max(c['top'] + geom_of(c)['h'] / 2 for c in placed)
                 left, top = CAB_X0 + g['w'] / 2, bottom + 60 + g['h'] / 2
         canvas.add_image(CABINET_URL[model], left=left, top=top, kind='cabinet', model=model,
-                         **PLACED, **live_props())
+                         **PLACED)
         log.push(f'cabinet added at {left:.0f},{top:.0f}')
         ui.timer(0, fit_canvas, once=True)   # grow the sheet to hold the new row
         refresh()
@@ -480,33 +484,12 @@ def index() -> None:
             ui.notify('drop terminals onto a rail inside a cabinet', type='warning')
             return
         canvas.add_image(CATALOG[part]['url'], left=x, top=y, kind=part,
-                         **PLACED, **live_props())
+                         **PLACED)
         reflow()
         log.push(f'{part} placed')
         refresh()
 
     ui.on('nf_drop', on_drop)
-
-    def draw_cable(from_id: str, to_id: str) -> None:
-        a = next((c for c in cabinets() if c['id'] == from_id), None)
-        b = next((c for c in cabinets() if c['id'] == to_id), None)
-        if a is None or b is None:
-            return
-        ay = a['top'] + geom_of(a)['h'] / 2 + 14
-        by = b['top'] + geom_of(b)['h'] / 2 + 14
-        pts = [(a['left'], ay), ((a['left'] + b['left']) / 2, ay),
-               ((a['left'] + b['left']) / 2, by), (b['left'], by)]
-        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
-        rel = [{'x': p[0] - min(xs), 'y': p[1] - min(ys)} for p in pts]
-        kind = cable_type.value
-        spec, length = CABLES[kind], float(cable_len.value)
-        canvas.add_polyline(rel, left=(min(xs) + max(xs)) / 2, top=(min(ys) + max(ys)) / 2,
-                            fill='', stroke=spec['colour'], strokeWidth=spec['stroke'],
-                            strokeUniform=True, kind='cable',
-                            # camelCase: the library warns on props containing "_"
-                            cableType=kind, lengthM=length, fromId=from_id, toId=to_id,
-                            **PLACED, **live_props())
-        log.push(f'{spec["label"]} cable, {length:g} m')
 
     # ------------------------------------------------------------------ labels -----------
     def sync_labels() -> None:
@@ -570,7 +553,6 @@ def index() -> None:
     def clear_all() -> None:
         canvas.clear_objects()
         state['labels'] = ''
-        state['pending'] = None
         refresh()
 
     def delete_selected() -> None:
@@ -579,23 +561,55 @@ def index() -> None:
         refresh()
 
     # ------------------------------------------------------------------ modes -----------
-    def set_tool(tool: str) -> None:
-        state['tool'] = tool
-        state['pending'] = None
-        canvas.discard_selection()
-        live = live_props()
-        for entry in objs():
-            if entry.get('kind') == 'label':
-                continue
-            try:
-                canvas.update_object(entry['id'], **live)
-            except KeyError:
-                pass
-        canvas.run_canvas_method('set', {'defaultCursor': 'default' if tool == 'select'
-                                         else 'crosshair'})
-        status_hint.text = ('drag terminals onto a rail' if tool == 'select'
-                            else 'click a cabinet to start an EtherCAT cable')
-        refresh()
+    def set_filter(text: str) -> None:
+        """Narrow the palette. The catalogue is longer than fits on screen, and hunting for the
+        pixel LED terminal by scrolling is how you conclude it is not in there."""
+        state['filter'] = (text or '').strip().lower()
+        fill_palette()
+
+    def fill_palette() -> None:
+        """Palette rows: the artwork, the part number, what the part actually does, and the
+        three numbers the checks and the BOM run on."""
+        needle = state['filter']
+        palette.clear()
+        with palette:
+            shown = 0
+            for group in CATEGORIES:
+                parts = [(p, s) for p, s in CATALOG.items() if s['cat'] == group
+                         and (not needle or needle in p.lower() or needle in s['desc'].lower()
+                              or needle in group.lower() or needle in s['grp'].lower())]
+                if not parts:
+                    continue
+                ui.label(group).classes('text-[10px] text-slate-400 mt-1.5 nf-palgroup')
+                for part, spec in parts:
+                    shown += 1
+                    with ui.row().classes('w-full items-start gap-2 rounded px-1 py-0.5 '
+                                          'hover:bg-slate-100'):
+                        ui.html(f'<div class="nf-piece nf-piece-{part}" draggable="true" '
+                                f'data-kind="{part}" title="{spec["desc"]}" '
+                                f'style="width:22px;height:46px;flex:none;cursor:grab;'
+                                f'display:flex;align-items:center;overflow:hidden">'
+                                f'<svg viewBox="0 0 {spec["w"] * PX_PER_MM:.0f} {TERM_H}" '
+                                f'width="22" height="46">{spec["art"]}</svg></div>')
+                        with ui.column().classes('gap-0 flex-1 min-w-0'):
+                            with ui.row().classes('w-full items-center gap-1'):
+                                ui.label(part).classes('text-[11px] font-mono font-medium '
+                                                       'text-slate-800 leading-tight')
+                                ui.label(spec['grp']) \
+                                    .classes('text-[9px] font-mono text-white rounded px-1 '
+                                             'leading-[13px]') \
+                                    .style(f'background:{STRIPE[spec["grp"]]}')
+                            ui.label(spec['desc']).classes('text-[10px] text-slate-600 '
+                                                           'leading-snug nf-paldesc')
+                            meta = (f'{spec["w"]} mm · {spec["ebus"]:+d} mA · '
+                                    f'{spec["price"]:,.2f}')
+                            if spec.get('rj45'):
+                                meta += f' · {spec["rj45"]}x RJ45'
+                            ui.label(meta).classes('text-[10px] font-mono text-slate-400 '
+                                                   'leading-tight nf-palmeta')
+            if not shown:
+                ui.label(f'nothing matches “{needle}”') \
+                    .classes('text-[11px] text-slate-400 py-2 nf-palempty')
 
     def set_view(name: str) -> None:
         state['view'] = name
@@ -672,7 +686,6 @@ def index() -> None:
             if len(picked) != 1:
                 prop_row('cabinets', str(len(cabinets())))
                 prop_row('terminals', str(len(terminals())))
-                prop_row('cables', str(len(cables())))
                 prop_row('line items', str(len(rows)))
                 return
             entry = picked[0]
@@ -687,13 +700,6 @@ def index() -> None:
                 prop_row('plate', '{}x{}'.format(*spec['plate']), 'mm')
                 prop_row('rails', f'{g["rails"]} x {g["rail_mm"]} mm')
                 prop_row('unit', f'{spec["price"]:,.2f}')
-            elif kind == 'cable':
-                spec, length = cable_spec(entry)
-                prop_row('type', spec['label'])
-                prop_row('part', spec['family'])
-                prop_row('length', f'{length:g}', 'm')
-                prop_row('unit', f'{spec["base"] + spec["per_m"] * length:,.2f}')
-                ui.label(spec['desc']).classes('text-[10px] text-slate-500 leading-snug mt-1')
             elif kind in CATALOG:
                 spec = CATALOG[kind]
                 cab = cabinet_at(entry['left'], entry['top'])
@@ -701,6 +707,8 @@ def index() -> None:
                 prop_row('location', designations().get(cab['id'], '—') if cab else '—')
                 prop_row('width', str(spec['w']), 'mm')
                 prop_row('E-bus', f'{spec["ebus"]:+d}', 'mA')
+                if spec.get('rj45'):
+                    prop_row('RJ45', f'{spec["rj45"]} x')
                 prop_row('unit', f'{spec["price"]:,.2f}')
                 ui.label(spec['desc']).classes('text-[10px] text-slate-500 leading-snug mt-1')
             with ui.grid(columns=2).classes('w-full gap-1 mt-2'):
@@ -797,48 +805,26 @@ def index() -> None:
             canvas.move(scroller)
             canvas.classes('nf-canvas nf-sheet')
 
-        with ui.element('div').classes('nf-dock p-2').style('left:12px; top:12px; width:194px'):
-            ui.label('TOOL').classes('nf-panelhead')
-            ui.toggle({'select': 'Select', 'cable': 'Cable'}, value='select',
-                      on_change=lambda e: set_tool(e.value)) \
-                .props('dense no-caps spread size=sm unelevated').classes('w-full nf-tool')
-            ui.label('ENCLOSURE').classes('nf-panelhead mt-2')
+        # a ui.column, not a div with `flex flex-col`: Quasar also ships a `.flex` rule and it
+        # wins, which lays the dock out as a row and pushes the palette off the side
+        with ui.column().classes('nf-dock p-2 gap-0 flex-nowrap') \
+                .style('left:12px; top:12px; width:264px; max-height:calc(100% - 24px)'):
+            ui.label('ENCLOSURE').classes('nf-panelhead')
             enclosure_model = ui.select(
                 {m: f'{m}  ({GEOM[m]["rails"]} x {GEOM[m]["rail_mm"]} mm)'
                  for m in ENCLOSURES}, value=DEFAULT_MODEL) \
                 .props('dense outlined options-dense').classes('w-full nf-model')
             ui.button('Add cabinet', icon='add_box', on_click=add_cabinet) \
                 .props('dense outline no-caps size=sm').classes('w-full mt-1 nf-addcab')
-            ui.label('CABLE').classes('nf-panelhead mt-2')
-            cable_type = ui.toggle({k: v['label'] for k, v in CABLES.items()},
-                                   value='ethercat') \
-                .props('dense no-caps spread size=sm unelevated').classes('w-full nf-cabletype')
-            cable_len = ui.toggle({n: f'{n} m' for n in CABLE_LENGTHS}, value=5) \
-                .props('dense no-caps spread size=sm unelevated') \
-                .classes('w-full mt-1 nf-cablelen')
             ui.separator().classes('my-2')
-            ui.label('TERMINALS').classes('nf-panelhead')
-            with ui.column().classes('w-full gap-0 max-h-[430px] overflow-auto'):
-                for group in ('Infrastructure', 'Digital', 'Analog', 'Comms & special',
-                              'Safety'):
-                    ui.label(group).classes('text-[10px] text-slate-400 mt-1')
-                    for part, spec in CATALOG.items():
-                        if spec['cat'] != group:
-                            continue
-                        with ui.row().classes('w-full items-center gap-2 rounded px-1 '
-                                              'hover:bg-slate-100'):
-                            ui.html(f'<div class="nf-piece nf-piece-{part}" draggable="true" '
-                                    f'data-kind="{part}" title="{spec["desc"]}" '
-                                    f'style="width:20px;height:44px;flex:none;cursor:grab;'
-                                    f'display:flex;align-items:center;overflow:hidden">'
-                                    f'<svg viewBox="0 0 {spec["w"] * PX_PER_MM:.0f} {TERM_H}" '
-                                    f'width="20" height="44">{spec["art"]}</svg></div>')
-                            with ui.column().classes('gap-0'):
-                                ui.label(part).classes('text-[11px] font-mono text-slate-800 '
-                                                       'leading-tight')
-                                ui.label(f'{spec["w"]} mm · {spec["ebus"]:+d} mA') \
-                                    .classes('text-[10px] font-mono text-slate-400 '
-                                             'leading-tight')
+            with ui.row().classes('w-full items-baseline gap-2'):
+                ui.label('TERMINALS').classes('nf-panelhead')
+                ui.label(f'{len(CATALOG)} parts').classes('text-[10px] text-slate-400')
+            ui.input(placeholder='filter: 1409, analog, IO-Link…',
+                     on_change=lambda e: set_filter(e.value)) \
+                .props('dense outlined clearable').classes('w-full mb-1 nf-filter')
+            palette = ui.column().classes('w-full gap-0 overflow-auto min-h-0 nf-palette')
+            fill_palette()
 
         with ui.element('div').classes('nf-dock p-2 overflow-auto') \
                 .style('right:12px; top:12px; width:212px; max-height:calc(100% - 24px)'):
@@ -875,7 +861,7 @@ def index() -> None:
             .classes('text-[11px] font-mono text-slate-600 nf-statustotal')
         status_issues = ui.label('no issues').classes('text-[11px] font-mono nf-issues')
         ui.space()
-        status_hint = ui.label('add a cabinet, then drag terminals onto a rail') \
+        ui.label('add a cabinet, then drag terminals onto a rail') \
             .classes('text-[11px] text-slate-400 nf-hint')
 
     set_view('layout')
