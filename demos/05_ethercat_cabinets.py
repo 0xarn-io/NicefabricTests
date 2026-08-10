@@ -72,7 +72,8 @@ LABEL_COLOUR = '#0f172a'
 
 # stripe colours by signal type — an editor affordance, not Beckhoff livery
 STRIPE = {'DI': '#22c55e', 'DO': '#ef4444', 'AI': '#3b82f6', 'AO': '#8b5cf6',
-          'MOT': '#f97316', 'COM': '#0ea5e9', 'PWR': '#64748b', 'SYS': '#64748b'}
+          'MOT': '#f97316', 'COM': '#0ea5e9', 'PWR': '#64748b', 'SYS': '#64748b',
+          'IOL': '#0891b2', 'LED': '#d946ef', 'SAF': '#b91c1c'}
 
 # part -> width_mm, E-bus mA (positive supplies, negative draws), price, signal group
 CATALOG: dict[str, dict] = {
@@ -90,10 +91,14 @@ CATALOG: dict[str, dict] = {
                'grp': 'PWR', 'cat': 'Infrastructure'},
     'EL1008': {'desc': 'Digital input, 8 ch, 24 V DC', 'w': 12, 'ebus': -90, 'price': 96.0,
                'grp': 'DI', 'cat': 'Digital'},
+    'EL1409': {'desc': 'Digital input, 16 ch, 24 V DC, 3 ms, positive switching', 'w': 12,
+               'ebus': -90, 'price': 155.0, 'grp': 'DI', 'cat': 'Digital'},
     'EL1809': {'desc': 'Digital input, 16 ch, 24 V DC', 'w': 12, 'ebus': -90, 'price': 155.0,
                'grp': 'DI', 'cat': 'Digital'},
     'EL2008': {'desc': 'Digital output, 8 ch, 24 V DC 0.5 A', 'w': 12, 'ebus': -110,
                'price': 102.0, 'grp': 'DO', 'cat': 'Digital'},
+    'EL2409': {'desc': 'Digital output, 16 ch, 24 V DC 0.5 A, positive switching', 'w': 12,
+               'ebus': -140, 'price': 168.0, 'grp': 'DO', 'cat': 'Digital'},
     'EL2809': {'desc': 'Digital output, 16 ch, 24 V DC 0.5 A', 'w': 12, 'ebus': -140,
                'price': 168.0, 'grp': 'DO', 'cat': 'Digital'},
     'EL3054': {'desc': 'Analog input, 4 ch, 4..20 mA', 'w': 12, 'ebus': -130, 'price': 260.0,
@@ -103,11 +108,23 @@ CATALOG: dict[str, dict] = {
     'EL4004': {'desc': 'Analog output, 4 ch, 0..10 V', 'w': 12, 'ebus': -130, 'price': 310.0,
                'grp': 'AO', 'cat': 'Analog'},
     'EL5101': {'desc': 'Incremental encoder interface', 'w': 12, 'ebus': -200, 'price': 280.0,
-               'grp': 'COM', 'cat': 'Motion & comms'},
+               'grp': 'COM', 'cat': 'Comms & special'},
     'EL6001': {'desc': 'Serial interface, RS232', 'w': 12, 'ebus': -100, 'price': 190.0,
-               'grp': 'COM', 'cat': 'Motion & comms'},
+               'grp': 'COM', 'cat': 'Comms & special'},
+    'EL6224': {'desc': 'IO-Link master, 4 ch, HD housing', 'w': 12, 'ebus': -130,
+               'price': 325.0, 'grp': 'IOL', 'cat': 'Comms & special'},
+    # up to 2048 pixels across its four channels; each channel needs its own external 5..24 V
+    'EL2574': {'desc': 'Pixel LED output, 4 ch, ext. 5..24 V per channel', 'w': 12,
+               'ebus': -130, 'price': 340.0, 'grp': 'LED', 'cat': 'Comms & special'},
     'EL7031': {'desc': 'Stepper motor terminal, 24 V, 1.5 A', 'w': 24, 'ebus': -130,
-               'price': 260.0, 'grp': 'MOT', 'cat': 'Motion & comms'},
+               'price': 260.0, 'grp': 'MOT', 'cat': 'Comms & special'},
+    'EL6910': {'desc': 'TwinSAFE Logic terminal', 'w': 12, 'ebus': -200, 'price': 1150.0,
+               'grp': 'SAF', 'cat': 'Safety'},
+    # a compact controller with its own EtherCAT connectors, so it heads its own segment
+    # rather than drawing from an upstream coupler
+    'EK1960': {'desc': 'TwinSAFE Compact Controller, 20 safe DI / 24 safe DO (2 A)', 'w': 126,
+               'ebus': EBUS_SUPPLY, 'price': 1800.0, 'grp': 'SAF', 'cat': 'Safety',
+               'grey': True},
 }
 
 CABINET_PART = {'part': 'CAB-600x800', 'desc': 'Enclosure 600x800x210 with mounting plate',
@@ -120,7 +137,7 @@ def _terminal_art(part: str) -> str:
     """A terminal: coloured body, signal stripe, LED column, part number printed vertically."""
     spec = CATALOG[part]
     w, h = round(spec['w'] * PX_PER_MM), TERM_H
-    fill = INFRA if spec['cat'] == 'Infrastructure' else BODY
+    fill = INFRA if spec.get('grey', spec['cat'] == 'Infrastructure') else BODY
     stripe = STRIPE[spec['grp']]
     body = (f'<rect x="0.6" y="0.6" width="{w - 1.2}" height="{h - 1.2}" rx="2" '
             f'fill="{fill}" stroke="{EDGE}" stroke-width="1.1"/>'
@@ -320,7 +337,7 @@ def index() -> None:
             cab = cabinet_at(term['left'], term['top'])
             add(tags.get(cab['id'], '(unplaced)') if cab else '(unplaced)', term['kind'])
         for cable in cables():
-            add(tags.get(cable.get('from_id'), '(inter-cabinet)'), CABLE_PART['part'])
+            add(tags.get(cable.get('fromId'), '(inter-cabinet)'), CABLE_PART['part'])
 
         def spec(part: str) -> tuple[str, float]:
             if part == CABINET_PART['part']:
@@ -392,7 +409,7 @@ def index() -> None:
         rel = [{'x': p[0] - min(xs), 'y': p[1] - min(ys)} for p in pts]
         canvas.add_polyline(rel, left=(min(xs) + max(xs)) / 2, top=(min(ys) + max(ys)) / 2,
                             fill='', stroke=CABLE, strokeWidth=2.4, strokeUniform=True,
-                            kind='cable', from_id=from_id, to_id=to_id,
+                            kind='cable', fromId=from_id, toId=to_id,   # camelCase: the library warns otherwise
                             **PLACED, **live_props())
         log.push('EtherCAT cable added')
 
@@ -676,7 +693,8 @@ def index() -> None:
             ui.separator().classes('my-2')
             ui.label('TERMINALS').classes('nf-panelhead')
             with ui.column().classes('w-full gap-0 max-h-[430px] overflow-auto'):
-                for group in ('Infrastructure', 'Digital', 'Analog', 'Motion & comms'):
+                for group in ('Infrastructure', 'Digital', 'Analog', 'Comms & special',
+                              'Safety'):
                     ui.label(group).classes('text-[10px] text-slate-400 mt-1')
                     for part, spec in CATALOG.items():
                         if spec['cat'] != group:

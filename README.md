@@ -258,8 +258,17 @@ Two deliberate simplifications: each rail is audited as its own E-bus segment (o
 a segment carries across rails through an `EK1110`/`EK1100` pair), and cabinets are drawn to fit
 their rails rather than to enclosure scale.
 
-> Part numbers are real Beckhoff designations, but the widths, E-bus figures and prices are
-> **representative values for the demo** — not a datasheet or a price list.
+The catalogue covers infrastructure (`EK1100`, `EK1110`, `EL9410`, `EL9011`, potential
+distribution), digital (`EL1008`, `EL1409`, `EL1809`, `EL2008`, `EL2409`, `EL2809`), analog,
+comms & special (`EL5101`, `EL6001`, `EL6224` IO-Link master, `EL2574` pixel LED, `EL7031`)
+and safety (`EL6910` TwinSAFE Logic, `EK1960` TwinSAFE Compact Controller). The `EK1960` is
+126 mm wide and carries its own EtherCAT connectors, so it heads its own segment rather than
+drawing from an upstream coupler — which also makes it the part that shows off the packing,
+since it swallows a sixth of a rail on its own.
+
+> Part numbers and functions were checked against Beckhoff's product pages, but the widths,
+> E-bus figures and prices are **representative values for the demo** — not a datasheet or a
+> price list.
 
 ## Notes
 
