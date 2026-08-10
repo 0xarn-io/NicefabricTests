@@ -25,9 +25,11 @@ Two simplifications worth knowing before reading the checks:
 * **Each rail is treated as its own E-bus segment.** On real hardware a segment continues from
   one rail to the next through an ``EK1110``/``EK1100`` pair, so the budget would carry across.
   Here every rail needs its own supply — a coupler or an ``EL9410`` — and is audited alone.
-* **Cabinets are schematic.** The enclosure is drawn to fit its rails, not to enclosure scale,
-  and EtherCAT cables are counted as pre-assembled patch leads rather than measured off the
-  drawing.
+* **Cabinets are schematic.** The enclosure is drawn to fit its rails, not to enclosure scale.
+* **Cables are pre-assembled parts, not measured runs.** A link carries a family and one of
+  the offered lengths, so the BOM lists an orderable lead rather than metres off the drawing.
+  The trailing ``xxx`` in each family is Beckhoff's own length code, deliberately left
+  unresolved rather than inventing a digit encoding.
 
 Housing colour is not decoration: on Beckhoff hardware **yellow means TwinSAFE**, so only the
 safety devices are drawn yellow and everything else takes the standard light grey. The coloured
@@ -56,7 +58,7 @@ PORT = 9094
 SLOT = 'nicefabric-demo-05'
 
 PX_PER_MM = 1.6                      # terminals are 12 mm wide; this keeps them legible
-RAIL_MM = 300                        # usable DIN rail length per rail
+RAIL_MM = 240                        # usable DIN rail length per rail
 RAILS_PER_CAB = 2
 TERM_H = round(100 * PX_PER_MM)      # terminal height, 100 mm
 RAIL_LEN = round(RAIL_MM * PX_PER_MM)
@@ -64,6 +66,8 @@ CAB_PAD = 26
 RAIL_PITCH = TERM_H + 58
 CAB_W = RAIL_LEN + 2 * CAB_PAD
 CAB_H = RAILS_PER_CAB * RAIL_PITCH + 2 * CAB_PAD
+CAB_X0, CAB_Y0, CAB_GAP = 240, 36, 50   # first cabinet clears the palette dock
+CABS_PER_ROW = 2                        # wrap, so a third cabinet is reachable
 
 EBUS_SUPPLY = 2000                   # mA delivered by a coupler / refresh terminal
 
@@ -75,7 +79,6 @@ SAFETY = '#f2cd13'                   # TwinSAFE yellow — EL6910, EK1960
 EDGE = '#3f3f46'
 CAB_EDGE = '#334155'
 RAIL_FILL = '#c3ccd6'
-CABLE = '#15803d'
 LABEL_COLOUR = '#0f172a'
 
 # stripe colours by signal type — an editor affordance, not Beckhoff livery
@@ -136,8 +139,22 @@ CATALOG: dict[str, dict] = {
 
 CABINET_PART = {'part': 'CAB-600x800', 'desc': 'Enclosure 600x800x210 with mounting plate',
                 'price': 540.0}
-CABLE_PART = {'part': 'ZK1090-9191-0050', 'desc': 'EtherCAT patch cable RJ45, 5 m',
-              'price': 42.0}
+
+# Pre-assembled Beckhoff cable families. The trailing `xxx` is Beckhoff's length code, left
+# unresolved here on purpose: the BOM carries the family plus the chosen length rather than a
+# digit encoding invented for the demo. Price is modelled base + per metre.
+CABLES: dict[str, dict] = {
+    'ethercat': {'label': 'EtherCAT', 'family': 'ZK1090-9191-Cxxx',
+                 'desc': 'EtherCAT patch cable, green, RJ45 plug 8-pin both ends',
+                 'colour': '#15803d', 'stroke': 2.4, 'base': 18.0, 'per_m': 4.8},
+    'ethercatp': {'label': 'EtherCAT P', 'family': 'ZK7001-0101-2xxx',
+                  'desc': 'EtherCAT P cable, M8 male straight 4-pin both ends',
+                  'colour': '#d97706', 'stroke': 3.2, 'base': 50.0, 'per_m': 9.0},
+    'hybrid': {'label': 'Hybrid OCT', 'family': 'ZK4704-0421-2xxx',
+               'desc': 'Motor cable 0.75 mm2 PUR, itec plug, OCT one-cable, drag-chain',
+               'colour': '#1f2937', 'stroke': 4.4, 'base': 110.0, 'per_m': 16.0},
+}
+CABLE_LENGTHS = (2, 5, 10)      # the pre-assembled lengths this demo offers
 
 
 def _terminal_art(part: str) -> str:
@@ -330,32 +347,36 @@ def index() -> None:
         return report
 
     # ------------------------------------------------------------------ bill of materials -
-    def bom_rows(by_location: bool) -> list[dict]:
-        tags = designations()
-        buckets: dict[tuple[str, str], int] = {}
+    def cable_spec(cable: dict) -> tuple[dict, float]:
+        """The catalogue entry and length behind a drawn cable, tolerating older saves."""
+        kind = cable.get('cableType') if cable.get('cableType') in CABLES else 'ethercat'
+        return CABLES[kind], float(cable.get('lengthM') or 5)
 
-        def add(loc: str, part: str, n: int = 1) -> None:
-            buckets[(loc if by_location else '', part)] = \
-                buckets.get((loc if by_location else '', part), 0) + n
+    def bom_rows(by_location: bool) -> list[dict]:
+        """Aggregate the layout into line items. Cables group by family *and* length, since a
+        2 m and a 10 m lead are different orderable parts."""
+        tags = designations()
+        buckets: dict[tuple[str, str, str, float], int] = {}
+
+        def add(loc: str, part: str, desc: str, price: float, n: int = 1) -> None:
+            key = (loc if by_location else '', part, desc, price)
+            buckets[key] = buckets.get(key, 0) + n
 
         for cab in cabinets():
-            add(tags[cab['id']], CABINET_PART['part'])
+            add(tags[cab['id']], CABINET_PART['part'], CABINET_PART['desc'],
+                CABINET_PART['price'])
         for term in terminals():
             cab = cabinet_at(term['left'], term['top'])
-            add(tags.get(cab['id'], '(unplaced)') if cab else '(unplaced)', term['kind'])
+            spec = CATALOG[term['kind']]
+            add(tags.get(cab['id'], '(unplaced)') if cab else '(unplaced)',
+                term['kind'], spec['desc'], spec['price'])
         for cable in cables():
-            add(tags.get(cable.get('fromId'), '(inter-cabinet)'), CABLE_PART['part'])
-
-        def spec(part: str) -> tuple[str, float]:
-            if part == CABINET_PART['part']:
-                return CABINET_PART['desc'], CABINET_PART['price']
-            if part == CABLE_PART['part']:
-                return CABLE_PART['desc'], CABLE_PART['price']
-            return CATALOG[part]['desc'], CATALOG[part]['price']
+            spec, length = cable_spec(cable)
+            add(tags.get(cable.get('fromId'), '(inter-cabinet)'), spec['family'],
+                f'{spec["desc"]}, {length:g} m', spec['base'] + spec['per_m'] * length)
 
         rows = []
-        for (loc, part), qty in sorted(buckets.items()):
-            desc, price = spec(part)
+        for (loc, part, desc, price), qty in sorted(buckets.items()):
             rows.append({'loc': loc or 'ALL', 'part': part, 'desc': desc, 'qty': str(qty),
                          'unit': f'{price:,.2f}', 'ext': f'{qty * price:,.2f}',
                          '_ext': qty * price})
@@ -377,14 +398,16 @@ def index() -> None:
 
     # ------------------------------------------------------------------ placement --------
     def add_cabinet() -> None:
-        # start clear of the palette dock (12..206): a cabinet underneath it would put the
-        # left end of its rails out of reach of a drop
-        existing = cabinets()
-        left = 240 + CAB_W / 2 + len(existing) * (CAB_W + 70)
-        top = 36 + CAB_H / 2
+        # Laid out on a fixed grid clear of the palette dock, wrapping every CABS_PER_ROW.
+        # A single unbounded row put the third cabinet past the right edge of the sheet, where
+        # nothing could be dropped on it.
+        n = len(cabinets())
+        left = CAB_X0 + CAB_W / 2 + (n % CABS_PER_ROW) * (CAB_W + CAB_GAP)
+        top = CAB_Y0 + CAB_H / 2 + (n // CABS_PER_ROW) * (CAB_H + 60)
         canvas.add_image(CABINET_URL, left=left, top=top, kind='cabinet',
                          **PLACED, **live_props())
         log.push(f'cabinet added at {left:.0f},{top:.0f}')
+        ui.timer(0, fit_canvas, once=True)   # grow the sheet to hold the new row
         refresh()
 
     def on_drop(e) -> None:
@@ -414,11 +437,15 @@ def index() -> None:
                (b['left'], b['top'] + CAB_H / 2 + 14)]
         xs, ys = [p[0] for p in pts], [p[1] for p in pts]
         rel = [{'x': p[0] - min(xs), 'y': p[1] - min(ys)} for p in pts]
+        kind = cable_type.value
+        spec, length = CABLES[kind], float(cable_len.value)
         canvas.add_polyline(rel, left=(min(xs) + max(xs)) / 2, top=(min(ys) + max(ys)) / 2,
-                            fill='', stroke=CABLE, strokeWidth=2.4, strokeUniform=True,
-                            kind='cable', fromId=from_id, toId=to_id,   # camelCase: the library warns otherwise
+                            fill='', stroke=spec['colour'], strokeWidth=spec['stroke'],
+                            strokeUniform=True, kind='cable',
+                            # camelCase: the library warns on props containing "_"
+                            cableType=kind, lengthM=length, fromId=from_id, toId=to_id,
                             **PLACED, **live_props())
-        log.push('EtherCAT cable added')
+        log.push(f'{spec["label"]} cable, {length:g} m')
 
     # ------------------------------------------------------------------ labels -----------
     def sync_labels() -> None:
@@ -593,9 +620,12 @@ def index() -> None:
                 prop_row('part', CABINET_PART['part'])
                 prop_row('rails', str(RAILS_PER_CAB))
             elif kind == 'cable':
-                prop_row('type', 'EtherCAT cable')
-                prop_row('part', CABLE_PART['part'])
-                prop_row('unit', f'{CABLE_PART["price"]:,.2f}')
+                spec, length = cable_spec(entry)
+                prop_row('type', spec['label'])
+                prop_row('part', spec['family'])
+                prop_row('length', f'{length:g}', 'm')
+                prop_row('unit', f'{spec["base"] + spec["per_m"] * length:,.2f}')
+                ui.label(spec['desc']).classes('text-[10px] text-slate-500 leading-snug mt-1')
             elif kind in CATALOG:
                 spec = CATALOG[kind]
                 cab = cabinet_at(entry['left'], entry['top'])
@@ -639,8 +669,14 @@ def index() -> None:
                 " return s ? [s.clientWidth, s.clientHeight] : null; })()", timeout=3)
         except TimeoutError:
             return
-        if dims and dims[0] > 200 and dims[1] > 200:
-            canvas.resize(*dims)
+        if not dims or dims[0] < 200 or dims[1] < 200:
+            return
+        # the sheet is at least the viewport, and grows to hold every cabinet — the stage
+        # scrolls, so rows below the fold stay reachable
+        placed = cabinets()
+        need_w = max([c['left'] + CAB_W / 2 for c in placed], default=0) + 60
+        need_h = max([c['top'] + CAB_H / 2 for c in placed], default=0) + 60
+        canvas.resize(max(dims[0], round(need_w)), max(dims[1], round(need_h)))
 
     ui.timer(0, wire_client, once=True)
     ui.on('nf_resize', fit_canvas)
@@ -687,8 +723,11 @@ def index() -> None:
                 ui.menu_item('Clear all', clear_all)
 
     with ui.element('div').classes('relative w-full flex-1 min-h-0 nf-stage') as stage:
-        canvas.move(stage)
-        canvas.classes('nf-canvas nf-sheet absolute inset-0')
+        # the canvas scrolls inside its own layer; the docks are siblings of the scroller, so
+        # they stay put instead of scrolling away with the sheet
+        with ui.element('div').classes('absolute inset-0 overflow-auto nf-scroll') as scroller:
+            canvas.move(scroller)
+            canvas.classes('nf-canvas nf-sheet')
 
         with ui.element('div').classes('nf-dock p-2').style('left:12px; top:12px; width:194px'):
             ui.label('TOOL').classes('nf-panelhead')
@@ -697,6 +736,13 @@ def index() -> None:
                 .props('dense no-caps spread size=sm unelevated').classes('w-full nf-tool')
             ui.button('Add cabinet', icon='add_box', on_click=add_cabinet) \
                 .props('dense outline no-caps size=sm').classes('w-full mt-1 nf-addcab')
+            ui.label('CABLE').classes('nf-panelhead mt-2')
+            cable_type = ui.toggle({k: v['label'] for k, v in CABLES.items()},
+                                   value='ethercat') \
+                .props('dense no-caps spread size=sm unelevated').classes('w-full nf-cabletype')
+            cable_len = ui.toggle({n: f'{n} m' for n in CABLE_LENGTHS}, value=5) \
+                .props('dense no-caps spread size=sm unelevated') \
+                .classes('w-full mt-1 nf-cablelen')
             ui.separator().classes('my-2')
             ui.label('TERMINALS').classes('nf-panelhead')
             with ui.column().classes('w-full gap-0 max-h-[430px] overflow-auto'):

@@ -244,6 +244,23 @@ The drawing is also audited, not just counted:
 - **Bus end cap.** A segment must finish with an `EL9011`; a rail without one is flagged.
 - **Rail fill.** Terminal widths summed in millimetres against the usable rail length.
 
+Links between cabinets are **pre-assembled Beckhoff cables**, picked by family and length:
+
+| Family | Cable |
+| ------ | ----- |
+| `ZK1090-9191-Cxxx` | EtherCAT patch cable, green, RJ45 plug 8-pin both ends |
+| `ZK7001-0101-2xxx` | EtherCAT P, M8 male straight 4-pin both ends |
+| `ZK4704-0421-2xxx` | Motor cable 0.75 mm² PUR, itec® plug, **OCT one-cable**, drag-chain |
+
+Each is drawn in its own colour and weight, and the BOM groups by family **and** length — a 5 m
+and a 10 m EtherCAT lead are different orderable parts, so they get separate lines, while two
+identical leads merge into one row of qty 2. The trailing `xxx` is Beckhoff's length code, left
+unresolved on purpose rather than inventing a digit encoding for the demo.
+
+Cabinets lay out on a wrapping grid and the sheet grows to hold them, scrolling inside the
+stage — a single unbounded row put the third cabinet past the right edge where nothing could be
+dropped on it.
+
 Containment cannot be stored as object references, because `load_json` **re-ids every object**.
 Each terminal instead carries its location designation and rail index as plain custom props,
 and its order along the rail is simply its `left` — sorted and re-packed on every layout pass.
