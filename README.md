@@ -33,7 +33,7 @@ Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 | 02 | [`02_editor.py`](demos/02_editor.py) | 9091 | The same library shaped like a tool: a full-page 2D editor with drawer-based tools, a properties panel, and the whole file suite |
 | 03 | [`03_agv_tracks.py`](demos/03_agv_tracks.py) | 9092 | A domain editor in the idiom of fleet-commissioning software: laser-scan underlay, drag-and-drop route elements on a metric snapping grid, node/properties/telemetry docks |
 | 04 | [`04_pid_bom.py`](demos/04_pid_bom.py) | 9093 | A P&ID editor whose bill of materials builds itself: SKU-tagged ISA symbols, click-to-draw pipe runs billed by length, CSV export |
-| 05 | [`05_ethercat_cabinets.py`](demos/05_ethercat_cabinets.py) | 9094 | EtherCAT cabinet planner: DIN rails that pack terminals left-to-right, an E-bus current audit, and a BOM general **and** per location |
+| 05 | [`05_ethercat_cabinets.py`](demos/05_ethercat_cabinets.py) | 9094 | EtherCAT cabinet planner: Rittal AX enclosures whose plates size the DIN rails, terminals that pack left-to-right, an E-bus current audit, and a BOM general **and** per location |
 
 ### 01 — shapes, SVG import, locking, and the registry
 
@@ -244,6 +244,22 @@ The drawing is also audited, not just counted:
 - **Bus end cap.** A segment must finish with an `EL9011`; a rail without one is flagged.
 - **Rail fill.** Terminal widths summed in millimetres against the usable rail length.
 
+**The enclosure is a real part, and it sets the rail capacity.** Each cabinet is a Rittal AX
+compact enclosure, and its published mounting plate drives the geometry: usable rail length is
+the plate width less 100 mm of wiring duct and side margin, and the rail count is the plate
+height over a 250 mm rail pitch.
+
+| Enclosure | W × H × D | Mounting plate | Rails |
+| --------- | --------- | -------------- | ----- |
+| `AX 1076.000` | 600 × 760 × 210 mm | 550 × 735 mm | 2 × 450 mm |
+| `AX 1180.000` | 800 × 1000 × 300 mm | 745 × 975 mm | 3 × 645 mm |
+| `AX 1260.000` | 600 × 1200 × 300 mm | 545 × 1175 mm | 4 × 445 mm |
+
+Picking the box is therefore a design decision rather than decoration — a small one runs the
+rail-fill check out of room — and the enclosure bills in the BOM next to the terminals. The
+rails are spaced for legibility rather than drawn to plate scale; their length and count are the
+real derived figures.
+
 Links between cabinets are **pre-assembled Beckhoff cables**, picked by family and length:
 
 | Family | Cable |
@@ -277,9 +293,8 @@ prints them. That relies on `<text>` rendering inside a `data:` URL SVG loaded a
 `Image` — verified by pixel-measuring the glyphs before building on it. Only generic font
 families are available there; an SVG loaded as an image cannot fetch external fonts.
 
-Two deliberate simplifications: each rail is audited as its own E-bus segment (on real hardware
-a segment carries across rails through an `EK1110`/`EK1100` pair), and cabinets are drawn to fit
-their rails rather than to enclosure scale.
+One deliberate simplification: each rail is audited as its own E-bus segment, where on real
+hardware a segment carries across rails through an `EK1110`/`EK1100` pair.
 
 The catalogue covers infrastructure (`EK1100`, `EK1110`, `EL9410`, `EL9011`, potential
 distribution), digital (`EL1008`, `EL1409`, `EL1809`, `EL2008`, `EL2409`, `EL2809`), analog,
@@ -289,9 +304,10 @@ and safety (`EL6910` TwinSAFE Logic, `EK1960` TwinSAFE Compact Controller). The 
 drawing from an upstream coupler — which also makes it the part that shows off the packing,
 since it swallows a sixth of a rail on its own.
 
-> Part numbers and functions were checked against Beckhoff's product pages, but the widths,
-> E-bus figures and prices are **representative values for the demo** — not a datasheet or a
-> price list.
+> Part numbers and functions were checked against Beckhoff's and Rittal's product pages, and
+> the enclosure and plate dimensions are the published ones — but the terminal widths, E-bus
+> figures and all prices are **representative values for the demo**, not a datasheet or a price
+> list.
 
 ## Notes
 

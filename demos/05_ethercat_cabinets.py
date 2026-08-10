@@ -20,12 +20,22 @@ cannot be stored as object references. Each terminal carries its location design
 index as plain custom props (``loc='+CAB01'``, ``rail=0``), and its order along the rail is
 simply its ``left`` — sorted and re-packed on every layout pass. Nothing points at an id.
 
-Two simplifications worth knowing before reading the checks:
+The enclosure is a real part too. Each cabinet is a **Rittal AX** compact enclosure picked from
+a small catalogue, and its published mounting plate is what sets the rail capacity: usable rail
+length is the plate width less 100 mm of wiring duct and side margin, and the number of rails is
+the plate height divided by a 250 mm rail pitch. An ``AX 1076.000`` (550 x 735 mm plate) gives
+2 rails of 450 mm; an ``AX 1180.000`` (745 x 975 mm) gives 3 of 645 mm; an ``AX 1260.000``
+(545 x 1175 mm) gives 4 of 445 mm. So choosing a smaller box really does run the rail-fill check
+out of room, and the enclosure lands in the BOM alongside the terminals.
+
+Simplifications worth knowing before reading the checks:
 
 * **Each rail is treated as its own E-bus segment.** On real hardware a segment continues from
   one rail to the next through an ``EK1110``/``EK1100`` pair, so the budget would carry across.
   Here every rail needs its own supply — a coupler or an ``EL9410`` — and is audited alone.
-* **Cabinets are schematic.** The enclosure is drawn to fit its rails, not to enclosure scale.
+* **The rail layout is derived, not drawn to plate scale.** Rail length and count come from the
+  real plate dimensions, but the drawing spaces the rails for legibility rather than rendering
+  the enclosure to scale.
 * **Cables are pre-assembled parts, not measured runs.** A link carries a family and one of
   the offered lengths, so the BOM lists an orderable lead rather than metres off the drawing.
   The trailing ``xxx`` in each family is Beckhoff's own length code, deliberately left
@@ -37,9 +47,10 @@ stripe along the top of each terminal is this editor's own signal-type coding, n
 livery.
 
 .. warning::
-   Part numbers are real Beckhoff designations, but the widths, E-bus figures and prices here
-   are **representative values for the demo**, not a datasheet or a price list. Check the
-   current documentation before ordering anything.
+   Part numbers are real Beckhoff and Rittal designations and the enclosure/plate sizes are the
+   published ones, but the terminal widths, E-bus figures and all prices here are
+   **representative values for the demo**, not a datasheet or a price list. Check the current
+   documentation before ordering anything.
 
 Run with::
 
@@ -57,17 +68,38 @@ from nicefabric import FabricCanvas
 PORT = 9094
 SLOT = 'nicefabric-demo-05'
 
-PX_PER_MM = 1.6                      # terminals are 12 mm wide; this keeps them legible
-RAIL_MM = 240                        # usable DIN rail length per rail
-RAILS_PER_CAB = 2
+PX_PER_MM = 1.35                     # terminals are 12 mm wide; this keeps them legible
 TERM_H = round(100 * PX_PER_MM)      # terminal height, 100 mm
-RAIL_LEN = round(RAIL_MM * PX_PER_MM)
 CAB_PAD = 26
-RAIL_PITCH = TERM_H + 58
-CAB_W = RAIL_LEN + 2 * CAB_PAD
-CAB_H = RAILS_PER_CAB * RAIL_PITCH + 2 * CAB_PAD
+RAIL_PITCH = TERM_H + 55             # rail-to-rail spacing on the drawing
 CAB_X0, CAB_Y0, CAB_GAP = 240, 36, 50   # first cabinet clears the palette dock
-CABS_PER_ROW = 2                        # wrap, so a third cabinet is reachable
+MAX_ROW = 2000                          # wrap a row of cabinets past this width
+ROW_BAND = RAIL_PITCH // 2              # top edges within this band count as the same row
+
+# Rittal AX compact enclosures. Enclosure and mounting-plate sizes are the published ones; the
+# rail layout is derived from the plate, which is what makes the choice of enclosure actually
+# constrain the design rather than being decoration.
+DUCT_MM = 100                        # wiring duct + side margin taken off the plate width
+RAIL_PITCH_MM = 250                  # rail + 100 mm terminal + duct, per rail row
+ENCLOSURES: dict[str, dict] = {
+    'AX 1076.000': {'wh': (600, 760, 210), 'plate': (550, 735), 'price': 470.0},
+    'AX 1180.000': {'wh': (800, 1000, 300), 'plate': (745, 975), 'price': 780.0},
+    'AX 1260.000': {'wh': (600, 1200, 300), 'plate': (545, 1175), 'price': 690.0},
+}
+DEFAULT_MODEL = 'AX 1076.000'
+
+
+def _geom(model: str) -> dict:
+    """Drawing geometry and rail capacity derived from the enclosure's mounting plate."""
+    plate_w, plate_h = ENCLOSURES[model]['plate']
+    rail_mm = plate_w - DUCT_MM
+    rails = max(1, int(plate_h // RAIL_PITCH_MM))
+    rail_len = round(rail_mm * PX_PER_MM)
+    return {'rail_mm': rail_mm, 'rails': rails, 'rail_len': rail_len,
+            'w': rail_len + 2 * CAB_PAD, 'h': rails * RAIL_PITCH + 2 * CAB_PAD}
+
+
+GEOM = {model: _geom(model) for model in ENCLOSURES}
 
 EBUS_SUPPLY = 2000                   # mA delivered by a coupler / refresh terminal
 
@@ -137,8 +169,7 @@ CATALOG: dict[str, dict] = {
                'ebus': EBUS_SUPPLY, 'price': 1800.0, 'grp': 'SAF', 'cat': 'Safety'},
 }
 
-CABINET_PART = {'part': 'CAB-600x800', 'desc': 'Enclosure 600x800x210 with mounting plate',
-                'price': 540.0}
+
 
 # Pre-assembled Beckhoff cable families. The trailing `xxx` is Beckhoff's length code, left
 # unresolved here on purpose: the BOM carries the family plus the chosen length rather than a
@@ -179,18 +210,20 @@ def _terminal_art(part: str) -> str:
             f'viewBox="0 0 {w} {h}">{body}</svg>')
 
 
-def _cabinet_art() -> str:
-    """An enclosure outline with its DIN rails — schematic, not drawn to enclosure scale."""
-    parts = [f'<rect x="1" y="1" width="{CAB_W - 2}" height="{CAB_H - 2}" rx="4" '
+def _cabinet_art(model: str) -> str:
+    """Enclosure outline with the DIN rails its mounting plate affords — schematic, not drawn
+    to enclosure scale, but the rail count and length do come from the real plate size."""
+    g = GEOM[model]
+    parts = [f'<rect x="1" y="1" width="{g["w"] - 2}" height="{g["h"] - 2}" rx="4" '
              f'fill="#fbfcfe" stroke="{CAB_EDGE}" stroke-width="2"/>']
-    for r in range(RAILS_PER_CAB):
+    for r in range(g['rails']):
         y = CAB_PAD + r * RAIL_PITCH + TERM_H
-        parts.append(f'<rect x="{CAB_PAD}" y="{y}" width="{RAIL_LEN}" height="10" rx="1.5" '
+        parts.append(f'<rect x="{CAB_PAD}" y="{y}" width="{g["rail_len"]}" height="9" rx="1.5" '
                      f'fill="{RAIL_FILL}" stroke="#94a3b8" stroke-width="0.8"/>')
         parts.append(f'<line x1="{CAB_PAD}" y1="{y - TERM_H}" x2="{CAB_PAD}" '
-                     f'y2="{y + 10}" stroke="#cbd5e1" stroke-width="1"/>')
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{CAB_W}" height="{CAB_H}" '
-            f'viewBox="0 0 {CAB_W} {CAB_H}">{"".join(parts)}</svg>')
+                     f'y2="{y + 9}" stroke="#cbd5e1" stroke-width="1"/>')
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{g["w"]}" height="{g["h"]}" '
+            f'viewBox="0 0 {g["w"]} {g["h"]}">{"".join(parts)}</svg>')
 
 
 def _url(svg: str) -> str:
@@ -200,7 +233,7 @@ def _url(svg: str) -> str:
 for _part, _spec in CATALOG.items():
     _spec['art'] = _terminal_art(_part)
     _spec['url'] = _url(_spec['art'])
-CABINET_URL = _url(_cabinet_art())
+CABINET_URL = {m: _url(_cabinet_art(m)) for m in ENCLOSURES}
 
 PLACED = {'lockScalingX': True, 'lockScalingY': True, 'borderColor': '#2563eb',
           'cornerColor': '#ffffff', 'cornerStrokeColor': '#2563eb',
@@ -249,8 +282,13 @@ def index() -> None:
         return canvas.to_dict()['objects']
 
     def cabinets() -> list[dict]:
-        return sorted((o for o in objs() if o.get('kind') == 'cabinet'),
-                      key=lambda o: (o['top'], o['left']))
+        # Row-major by the *top edge*, not the centre. Enclosures differ in height, so two
+        # cabinets standing side by side in one row have different centres — sorting on `top`
+        # would hand +CAB01 to whichever box happens to be shorter.
+        def row_major(o: dict) -> tuple[float, float]:
+            return round((o['top'] - geom_of(o)['h'] / 2) / ROW_BAND), o['left']
+
+        return sorted((o for o in objs() if o.get('kind') == 'cabinet'), key=row_major)
 
     def terminals() -> list[dict]:
         return [o for o in objs() if o.get('kind') in CATALOG]
@@ -262,16 +300,27 @@ def index() -> None:
         """Cabinet id -> location designation, numbered by position so it survives a load."""
         return {c['id']: f'+CAB{i:02d}' for i, c in enumerate(cabinets(), 1)}
 
+    def geom_of(cab: dict) -> dict:
+        """Geometry of one cabinet, from the enclosure model stored on the object."""
+        return GEOM.get(cab.get('model'), GEOM[DEFAULT_MODEL])
+
     def cabinet_at(x: float, y: float) -> dict | None:
         for cab in cabinets():
-            if (abs(x - cab['left']) <= CAB_W / 2) and (abs(y - cab['top']) <= CAB_H / 2):
+            g = geom_of(cab)
+            if abs(x - cab['left']) <= g['w'] / 2 and abs(y - cab['top']) <= g['h'] / 2:
                 return cab
         return None
 
+    def rail_index(cab: dict, y: float) -> int:
+        g = geom_of(cab)
+        top_edge = cab['top'] - g['h'] / 2 + CAB_PAD
+        return max(0, min(g['rails'] - 1, int((y - top_edge + TERM_H / 2) // RAIL_PITCH)))
+
     def rail_origin(cab: dict, rail: int) -> tuple[float, float]:
         """Top-left of a rail's terminal row, in scene coordinates."""
-        return (cab['left'] - CAB_W / 2 + CAB_PAD,
-                cab['top'] - CAB_H / 2 + CAB_PAD + rail * RAIL_PITCH)
+        g = geom_of(cab)
+        return (cab['left'] - g['w'] / 2 + CAB_PAD,
+                cab['top'] - g['h'] / 2 + CAB_PAD + rail * RAIL_PITCH)
 
     # ------------------------------------------------------------------ containment ------
     def reflow() -> None:
@@ -283,10 +332,7 @@ def index() -> None:
             cab = cabinet_at(term['left'], term['top'])
             if cab is None:                       # dropped outside any cabinet: park it
                 continue
-            top_edge = cab['top'] - CAB_H / 2 + CAB_PAD
-            rail = max(0, min(RAILS_PER_CAB - 1,
-                              int((term['top'] - top_edge + TERM_H / 2) // RAIL_PITCH)))
-            by_rail.setdefault((cab['id'], rail), []).append(term)
+            by_rail.setdefault((cab['id'], rail_index(cab, term['top'])), []).append(term)
 
         for (cab_id, rail), items in by_rail.items():
             cab = next(c for c in cabinets() if c['id'] == cab_id)
@@ -307,10 +353,7 @@ def index() -> None:
             cab = cabinet_at(term['left'], term['top'])
             if cab is None:
                 continue
-            top_edge = cab['top'] - CAB_H / 2 + CAB_PAD
-            rail = max(0, min(RAILS_PER_CAB - 1,
-                              int((term['top'] - top_edge + TERM_H / 2) // RAIL_PITCH)))
-            out.setdefault((cab['id'], rail), []).append(term)
+            out.setdefault((cab['id'], rail_index(cab, term['top'])), []).append(term)
         for items in out.values():
             items.sort(key=lambda t: t['left'])
         return out
@@ -331,6 +374,8 @@ def index() -> None:
                     budget += ebus
                     if worst is None or budget < worst:
                         worst, culprit = budget, term['kind']
+            cab = next((c for c in cabinets() if c['id'] == cab_id), None)
+            rail_mm = geom_of(cab)['rail_mm'] if cab else GEOM[DEFAULT_MODEL]['rail_mm']
             used_mm = sum(CATALOG[t['kind']]['w'] for t in items)
             issues = []
             if items and not seen_supply:
@@ -339,10 +384,10 @@ def index() -> None:
                 issues.append(f'E-bus short by {abs(worst)} mA at {culprit} — add an EL9410')
             if items and items[-1]['kind'] != 'EL9011':
                 issues.append('segment does not end with an EL9011 end cap')
-            if used_mm > RAIL_MM:
-                issues.append(f'rail overfull: {used_mm} mm on a {RAIL_MM} mm rail')
+            if used_mm > rail_mm:
+                issues.append(f'rail overfull: {used_mm} mm on a {rail_mm} mm rail')
             report.append({'loc': tags.get(cab_id, '?'), 'rail': rail, 'count': len(items),
-                           'used_mm': used_mm, 'headroom': budget if seen_supply else None,
+                           'used_mm': used_mm, 'rail_mm': rail_mm, 'headroom': budget if seen_supply else None,
                            'issues': issues})
         return report
 
@@ -363,8 +408,12 @@ def index() -> None:
             buckets[key] = buckets.get(key, 0) + n
 
         for cab in cabinets():
-            add(tags[cab['id']], CABINET_PART['part'], CABINET_PART['desc'],
-                CABINET_PART['price'])
+            model = cab.get('model', DEFAULT_MODEL)
+            spec = ENCLOSURES[model]
+            w, h, d = spec['wh']
+            add(tags[cab['id']], f'Rittal {model}',
+                f'Compact enclosure AX, sheet steel, {w}x{h}x{d} mm, with mounting plate',
+                spec['price'])
         for term in terminals():
             cab = cabinet_at(term['left'], term['top'])
             spec = CATALOG[term['kind']]
@@ -398,13 +447,25 @@ def index() -> None:
 
     # ------------------------------------------------------------------ placement --------
     def add_cabinet() -> None:
-        # Laid out on a fixed grid clear of the palette dock, wrapping every CABS_PER_ROW.
-        # A single unbounded row put the third cabinet past the right edge of the sheet, where
-        # nothing could be dropped on it.
-        n = len(cabinets())
-        left = CAB_X0 + CAB_W / 2 + (n % CABS_PER_ROW) * (CAB_W + CAB_GAP)
-        top = CAB_Y0 + CAB_H / 2 + (n // CABS_PER_ROW) * (CAB_H + 60)
-        canvas.add_image(CABINET_URL, left=left, top=top, kind='cabinet',
+        # Packed left to right and wrapped past MAX_ROW, with rows advancing by the tallest
+        # cabinet placed so far. Enclosures differ in size now, so a fixed grid would either
+        # overlap the tall ones or waste a screen of space around the short ones.
+        model = enclosure_model.value
+        g = GEOM[model]
+        placed = cabinets()
+        if not placed:
+            left, top = CAB_X0 + g['w'] / 2, CAB_Y0 + g['h'] / 2
+        else:
+            right = max(c['left'] + geom_of(c)['w'] / 2 for c in placed)
+            row_top = min(c['top'] - geom_of(c)['h'] / 2 for c in placed
+                          if c['top'] - geom_of(c)['h'] / 2
+                          >= max(x['top'] - geom_of(x)['h'] / 2 for x in placed) - 1)
+            if right + CAB_GAP + g['w'] <= MAX_ROW:
+                left, top = right + CAB_GAP + g['w'] / 2, row_top + g['h'] / 2
+            else:                                    # wrap below everything placed so far
+                bottom = max(c['top'] + geom_of(c)['h'] / 2 for c in placed)
+                left, top = CAB_X0 + g['w'] / 2, bottom + 60 + g['h'] / 2
+        canvas.add_image(CABINET_URL[model], left=left, top=top, kind='cabinet', model=model,
                          **PLACED, **live_props())
         log.push(f'cabinet added at {left:.0f},{top:.0f}')
         ui.timer(0, fit_canvas, once=True)   # grow the sheet to hold the new row
@@ -431,10 +492,10 @@ def index() -> None:
         b = next((c for c in cabinets() if c['id'] == to_id), None)
         if a is None or b is None:
             return
-        pts = [(a['left'], a['top'] + CAB_H / 2 + 14),
-               ((a['left'] + b['left']) / 2, a['top'] + CAB_H / 2 + 14),
-               ((a['left'] + b['left']) / 2, b['top'] + CAB_H / 2 + 14),
-               (b['left'], b['top'] + CAB_H / 2 + 14)]
+        ay = a['top'] + geom_of(a)['h'] / 2 + 14
+        by = b['top'] + geom_of(b)['h'] / 2 + 14
+        pts = [(a['left'], ay), ((a['left'] + b['left']) / 2, ay),
+               ((a['left'] + b['left']) / 2, by), (b['left'], by)]
         xs, ys = [p[0] for p in pts], [p[1] for p in pts]
         rel = [{'x': p[0] - min(xs), 'y': p[1] - min(ys)} for p in pts]
         kind = cable_type.value
@@ -450,7 +511,9 @@ def index() -> None:
     # ------------------------------------------------------------------ labels -----------
     def sync_labels() -> None:
         tags = designations()
-        wanted = [(c['left'] - CAB_W / 2 + 8, c['top'] - CAB_H / 2 - 22, tags[c['id']])
+        wanted = [(c['left'] - geom_of(c)['w'] / 2 + 8,
+                   c['top'] - geom_of(c)['h'] / 2 - 22,
+                   f'{tags[c["id"]]}  ·  {c.get("model", DEFAULT_MODEL)}')
                   for c in cabinets()]
         signature = repr(sorted(wanted))
         if signature == state['labels']:
@@ -591,7 +654,7 @@ def index() -> None:
                 head = f'{entry["loc"]} rail {entry["rail"] + 1}'
                 with ui.row().classes('w-full items-baseline gap-1'):
                     ui.label(head).classes('text-[11px] font-mono text-slate-700 flex-1')
-                    ui.label(f'{entry["used_mm"]}/{RAIL_MM} mm') \
+                    ui.label(f'{entry["used_mm"]}/{entry["rail_mm"]} mm') \
                         .classes('text-[10px] font-mono text-slate-400')
                 head_room = entry['headroom']
                 ui.label(f'E-bus headroom {head_room} mA' if head_room is not None
@@ -617,8 +680,13 @@ def index() -> None:
             if kind == 'cabinet':
                 prop_row('type', 'Enclosure')
                 prop_row('location', designations().get(entry['id'], '?'))
-                prop_row('part', CABINET_PART['part'])
-                prop_row('rails', str(RAILS_PER_CAB))
+                model = entry.get('model', DEFAULT_MODEL)
+                spec, g = ENCLOSURES[model], GEOM[model]
+                prop_row('part', f'Rittal {model}')
+                prop_row('size', '{}x{}x{}'.format(*spec['wh']), 'mm')
+                prop_row('plate', '{}x{}'.format(*spec['plate']), 'mm')
+                prop_row('rails', f'{g["rails"]} x {g["rail_mm"]} mm')
+                prop_row('unit', f'{spec["price"]:,.2f}')
             elif kind == 'cable':
                 spec, length = cable_spec(entry)
                 prop_row('type', spec['label'])
@@ -674,8 +742,8 @@ def index() -> None:
         # the sheet is at least the viewport, and grows to hold every cabinet — the stage
         # scrolls, so rows below the fold stay reachable
         placed = cabinets()
-        need_w = max([c['left'] + CAB_W / 2 for c in placed], default=0) + 60
-        need_h = max([c['top'] + CAB_H / 2 for c in placed], default=0) + 60
+        need_w = max([c['left'] + geom_of(c)['w'] / 2 for c in placed], default=0) + 60
+        need_h = max([c['top'] + geom_of(c)['h'] / 2 for c in placed], default=0) + 60
         canvas.resize(max(dims[0], round(need_w)), max(dims[1], round(need_h)))
 
     ui.timer(0, wire_client, once=True)
@@ -734,6 +802,11 @@ def index() -> None:
             ui.toggle({'select': 'Select', 'cable': 'Cable'}, value='select',
                       on_change=lambda e: set_tool(e.value)) \
                 .props('dense no-caps spread size=sm unelevated').classes('w-full nf-tool')
+            ui.label('ENCLOSURE').classes('nf-panelhead mt-2')
+            enclosure_model = ui.select(
+                {m: f'{m}  ({GEOM[m]["rails"]} x {GEOM[m]["rail_mm"]} mm)'
+                 for m in ENCLOSURES}, value=DEFAULT_MODEL) \
+                .props('dense outlined options-dense').classes('w-full nf-model')
             ui.button('Add cabinet', icon='add_box', on_click=add_cabinet) \
                 .props('dense outline no-caps size=sm').classes('w-full mt-1 nf-addcab')
             ui.label('CABLE').classes('nf-panelhead mt-2')
