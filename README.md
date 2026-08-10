@@ -249,6 +249,12 @@ Each terminal instead carries its location designation and rail index as plain c
 and its order along the rail is simply its `left` — sorted and re-packed on every layout pass.
 Nothing points at an id, so a save/load round trip keeps the whole hierarchy.
 
+**Housing colour carries meaning.** On Beckhoff hardware yellow means TwinSAFE, so only the
+safety devices (`EL6910`, `EK1960`) are drawn yellow and every standard EL/EK terminal takes the
+light grey housing — a rail full of yellow would read as though the whole thing were
+safety-rated. The coloured stripe along the top of each terminal is the editor's own signal-type
+coding (green DI, red DO, blue AI, …), not Beckhoff livery.
+
 Terminal part numbers are printed **vertically inside the terminal artwork**, the way Beckhoff
 prints them. That relies on `<text>` rendering inside a `data:` URL SVG loaded as a Fabric
 `Image` — verified by pixel-measuring the glyphs before building on it. Only generic font

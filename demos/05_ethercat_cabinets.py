@@ -29,6 +29,11 @@ Two simplifications worth knowing before reading the checks:
   and EtherCAT cables are counted as pre-assembled patch leads rather than measured off the
   drawing.
 
+Housing colour is not decoration: on Beckhoff hardware **yellow means TwinSAFE**, so only the
+safety devices are drawn yellow and everything else takes the standard light grey. The coloured
+stripe along the top of each terminal is this editor's own signal-type coding, not Beckhoff
+livery.
+
 .. warning::
    Part numbers are real Beckhoff designations, but the widths, E-bus figures and prices here
    are **representative values for the demo**, not a datasheet or a price list. Check the
@@ -62,8 +67,11 @@ CAB_H = RAILS_PER_CAB * RAIL_PITCH + 2 * CAB_PAD
 
 EBUS_SUPPLY = 2000                   # mA delivered by a coupler / refresh terminal
 
-BODY = '#f0c437'                     # the yellow of an EL terminal
-INFRA = '#d5dbe2'                    # couplers, end caps, potential distribution
+# Housing colour carries real meaning on Beckhoff hardware: yellow is TwinSAFE. Standard
+# EL/EK terminals are a light warm grey, so colouring everything yellow would read as a rail
+# full of safety devices.
+STANDARD = '#dcdcd4'                 # standard EL/EK housing
+SAFETY = '#f2cd13'                   # TwinSAFE yellow — EL6910, EK1960
 EDGE = '#3f3f46'
 CAB_EDGE = '#334155'
 RAIL_FILL = '#c3ccd6'
@@ -123,8 +131,7 @@ CATALOG: dict[str, dict] = {
     # a compact controller with its own EtherCAT connectors, so it heads its own segment
     # rather than drawing from an upstream coupler
     'EK1960': {'desc': 'TwinSAFE Compact Controller, 20 safe DI / 24 safe DO (2 A)', 'w': 126,
-               'ebus': EBUS_SUPPLY, 'price': 1800.0, 'grp': 'SAF', 'cat': 'Safety',
-               'grey': True},
+               'ebus': EBUS_SUPPLY, 'price': 1800.0, 'grp': 'SAF', 'cat': 'Safety'},
 }
 
 CABINET_PART = {'part': 'CAB-600x800', 'desc': 'Enclosure 600x800x210 with mounting plate',
@@ -137,7 +144,7 @@ def _terminal_art(part: str) -> str:
     """A terminal: coloured body, signal stripe, LED column, part number printed vertically."""
     spec = CATALOG[part]
     w, h = round(spec['w'] * PX_PER_MM), TERM_H
-    fill = INFRA if spec.get('grey', spec['cat'] == 'Infrastructure') else BODY
+    fill = SAFETY if spec['cat'] == 'Safety' else STANDARD
     stripe = STRIPE[spec['grp']]
     body = (f'<rect x="0.6" y="0.6" width="{w - 1.2}" height="{h - 1.2}" rx="2" '
             f'fill="{fill}" stroke="{EDGE}" stroke-width="1.1"/>'
